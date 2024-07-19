@@ -11,8 +11,15 @@ class TestHTFullTextSearcher:
             use_shards=False,
         )
         solr_results = searcher.solr_result_query_dict(
+            url=config_search.SOLR_URL["dev"],
             query_string="majority of the votes",
             fl=["author", "id", "title"],
             operator="AND",
         )
-        assert solr_results["response"]["numFound"] > 1
+
+        for result in solr_results:
+            assert "author" in result["response"]["docs"]
+            assert "id" in result["response"]["docs"]
+            assert "title" in result["response"]["docs"]
+            assert result["response"]["numFound"] > 1
+

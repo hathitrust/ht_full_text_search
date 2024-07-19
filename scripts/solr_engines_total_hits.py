@@ -1,7 +1,6 @@
 import pandas as pd
 import os
 import pathlib
-import matplotlib.pyplot as plt
 
 if __name__ == "__main__":
     list_queries = []
