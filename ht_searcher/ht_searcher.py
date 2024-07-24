@@ -50,10 +50,9 @@ class HTSearcher:
     def get_documents_query_dict(self, url, query_dict, start: int = 0, rows: int = 100):
 
         print(url)
-        print(f"{url.replace('#/', '')}query")
         query_dict.update({"start": start, "rows": rows})
         response = requests.post(
-            url=f"{url.replace('#/', '')}query", params=query_dict, headers=self.headers, stream=True
+            url=url, params=query_dict, headers=self.headers, stream=True
         )
         return response
 

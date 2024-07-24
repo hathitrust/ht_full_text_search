@@ -2,6 +2,8 @@ import json
 import requests
 import yaml
 
+from config_search import QUERY_PARAMETER_CONFIG_FILE
+
 SOLR_URL = "http://localhost:8081/solr/core-1x/query"
 SOLR_SHARDS = [f"http://solr-sdr-search-{i}:8081/solr/core-{i}x" for i in range(1, 12)]
 
@@ -69,7 +71,8 @@ def make_query(query):
     return f"{{!edismax {solr_query_params()}}} {query}"
 
 
-def solr_query_params(config_file="config_files/full_text_search/config_query.yaml", conf_query="ocr"):
+# "config_files/full_text_search/config_query.yaml"
+def solr_query_params(config_file=QUERY_PARAMETER_CONFIG_FILE, conf_query="ocr"):
     with open(config_file, "r") as file:
         data = yaml.safe_load(file)[conf_query]
 
