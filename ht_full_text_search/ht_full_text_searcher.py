@@ -1,6 +1,12 @@
 import json
 import os
+import sys
+import inspect
 from argparse import ArgumentParser
+
+current = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+parent = os.path.dirname(current)
+sys.path.insert(0, parent)
 
 from config_search import SOLR_URL
 from ht_full_text_search.ht_full_text_query import HTFullTextQuery
@@ -109,7 +115,7 @@ if __name__ == "__main__":
     # Create query object
     Q = HTFullTextQuery(config_query=args.query_config)
 
-    # Create full text searcher object
+    # Create a full text searcher object
     ht_full_search = HTFullTextSearcher(
         solr_url=solr_url, ht_search_query=Q, environment=args.env
     )

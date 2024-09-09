@@ -68,13 +68,14 @@ The API is based on the [FastAPI](https://fastapi.tiangolo.com/) library.
 ### Prerequisites
 * Docker
 * Code Editor
-* Python 3 and Poetry (If you want to run the application in your local environment)
+* Python 3 and Poetry (If you want to run the application in your local environment). See the installation section below.
   * To access to prod Solr server, you need it, 
     * to have a VPN connection to the HathiTrust network
     * to set up an ssh tunnel `ssh -L8081:localhost:8081 squishee-1.umdl.umich.edu`
     * to run the application in your local environment with the parameter `--env prod`.We don't have an 
     acceptable alternative, nor is it necessary to set up access to the production server via a Docker file.
-  * To query production, you will have to run the application locally and open and ssh connection to squishee-1. 
+  * To query production, you will have to run the application locally and open and ssh connection to squishee-1.
+  * To locally run the application, you can also set up the environment variable `HT_ENVIRONMENT` (dev or prod) to define the desired environment.
 
 ### Installation
 
@@ -141,7 +142,7 @@ The project is structured as follows:
 The infrastructure of the application is based on the following classes. The classes are used to create the Solr query 
 and search the documents in the Solr server. In the image below, you can see the classes and their relationships.
 
-![application_architecture.png](application_architecture_1.png)
+![application_architecture.png](application_architecture.png)
 
 The main classes are:
 * ht_full_text_searcher.py: Contains the class responsible for creating the Solr query in the full-text search index
@@ -293,7 +294,7 @@ PROD and DEV servers.
 
 **Use case 4**: Do the same exact phrase query but export all results using solr result streaming:
 
-- This use case originated from an HTRC request. The HTRC needs to obtain the htids of the documents that are useful for creating the dataset.
+- This use case originated from an HTRC request. The HTRC needs to get the htids of the documents that are useful for creating the dataset.
 - The API is implemented in the `main.py`, that uses the script /ht_full_text_search/export_all_results.py to search the documents in the Solr server.
 
 The API is running in the container full_text_search_api where `docker compose up -d` is executed.
@@ -302,7 +303,7 @@ To check the API is running, you can access the URL `http://localhost:8000/docs`
 
 You will see the following screen with the API endpoints:
 
-![img.png](search_api_documentation.png)
+![search_api_documentation.png](search_api_documentation.png)
 
 * Query endpoint: 
 
@@ -335,6 +336,28 @@ the name of the virtual environment created by poetry.
 - Enter inside the docker file: `docker compose exec full_text_searcher /bin/bash`
 - Running the scripts: `docker compose exec full_text_searcher python ht_full_text_search/export_all_results.py '"justice blame"'`
 
+### Guides to install python and poetry on macOS
+
+Recommendation: Use brew to install python and pyenv to manage the python versions.
+
+* Install python
+    * You can read this blog to install python in the right way in
+      python: https://opensource.com/article/19/5/python-3-default-mac
+* Install poetry:
+    * **Good blog to understand and use poetry
+      **: https://blog.networktocode.com/post/upgrade-your-python-project-with-poetry/
+    * **Poetry docs**: https://python-poetry.org/docs/dependency-specification/
+    * **How to manage Python projects with Poetry
+      **: https://www.infoworld.com/article/3527850/how-to-manage-python-projects-with-poetry.html
+
+* Useful poetry commands (Find more information about commands [here](https://python-poetry.org/docs/cli))
+    * Inside the application folder: See the virtual environment used by the application `` poetry env use python ``
+    * Activate the virtual environment: ``source ~/ht-indexer-GQmvgxw4-py3.11/bin/activate``, in Mac poetry creates
+      their files in the home directory, e.g. /Users/user_name/Library/Caches/pypoetry/.
+    * `` poetry export -f requirements.txt --output requirements.txt ``
+    * Use `` poetry update `` if you change your .toml file and want to generate a new version the .lock file
+    * Use ``poetry add ruff@latest`` to add the last version of the package ruff to your project
+    * Use ``poetry add ruff@1.0.0`` to add a specific version of the package ruff to your project
 
 ### Transforms the Solr query from string to JSON
 
