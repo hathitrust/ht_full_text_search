@@ -4,14 +4,14 @@ import sys
 import inspect
 from argparse import ArgumentParser
 
-current = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
-parent = os.path.dirname(current)
-sys.path.insert(0, parent)
-
 from config_search import SOLR_URL
 from ht_full_text_search.ht_full_text_query import HTFullTextQuery
 from ht_searcher.ht_searcher import HTSearcher
 from typing import Text, List, Dict
+
+current = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+parent = os.path.dirname(current)
+sys.path.insert(0, parent)
 
 """
 LS::Operation::Search ==> it contains all the logic about interleaved adn A/B tests
@@ -24,11 +24,14 @@ class HTFullTextSearcher(HTSearcher):
             solr_url: Text = None,
             ht_search_query: HTFullTextQuery = None,
             environment: str = "dev",
+            user=None, password=None
     ):
         super().__init__(
             solr_url=solr_url,
             ht_search_query=ht_search_query,
-            environment=environment
+            environment=environment,
+            user=user,
+            password=password
         )
 
     def solr_result_output(
@@ -109,6 +112,9 @@ if __name__ == "__main__":
     else:  # Use the default solr url, depending on the environment. If prod environment, use shards
         solr_url = SOLR_URL[args.env]
 
+    solr_user = os.getenv("SOLR_USER")
+    solr_password = os.getenv("SOLR_PASSWORD")
+
     query_string = args.query_string
     fl = args.fl
 
@@ -117,7 +123,7 @@ if __name__ == "__main__":
 
     # Create a full text searcher object
     ht_full_search = HTFullTextSearcher(
-        solr_url=solr_url, ht_search_query=Q, environment=args.env
+        solr_url=solr_url, ht_search_query=Q, environment=args.env, user=solr_user, password=solr_password
     )
 
     filter_dict = {}

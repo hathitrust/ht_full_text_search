@@ -60,9 +60,14 @@ The API is based on the [FastAPI](https://fastapi.tiangolo.com/) library.
 
 ## Project Set Up
 * In your work directory,
-  * Run the script ./init.sh to create the image and set up all the environment variables used in the application
+  * Run the script `./init.sh` to create the image and set up all the environment variables used in the application
   * Start the container with the service involved in the search
   `docker-compose up -d`
+  **Note**: The container will take some minutes to start because it will start:
+    * the Solr server with authentication. In docker, all the users (`admin`, `solr`, `fulltext`) use the same password `solrRocks`
+    * the application to search the documents in the Solr server
+    * the API to search the documents in the Solr server
+    * a service to index some data in the Solr server to test the application
 
 
 ### Prerequisites
@@ -89,7 +94,6 @@ The API is based on the [FastAPI](https://fastapi.tiangolo.com/) library.
       * `poetry init` # It will set up your local environment and repository details
       * `poetry env use python` # To find the virtual environment directory, created by poetry
       * `source ~/ht-full-text-search-TUsF9qpC-py3.11/bin/activate` # Activate the virtual environment
-      * `poetry add pytest` # Add dependencies
 
 ### Creating A Pull Request
 
@@ -117,7 +121,6 @@ The project is structured as follows:
     │   ├── export_all_results.py
     │   ├── ht_full_text_searcher.py
     |   ├── search.py
-
     │   ├── search.py
     │   ├── scripts
     │   │   ├── compare_results.py
@@ -145,11 +148,13 @@ and search the documents in the Solr server. In the image below, you can see the
 ![application_architecture.png](application_architecture.png)
 
 The main classes are:
-* ht_full_text_searcher.py: Contains the class responsible for creating the Solr query in the full-text search index
-* ht_searcher.py: This class encapsulates the search interface to Solr
-* ht_query.py: This class is responsible for creating the Solr query
-* ht_search_results.py: This class is responsible for presenting the Solr results
-* Config_files: This folder contains the YAML file setting the configuration of the Solr query
+* `ht_full_text_searcher.py`: Contains the class responsible for creating the Solr query in the full-text search index
+* `ht_searcher.py`: This class encapsulates the search interface to Solr
+* `ht_query.py`: This class is responsible for creating the Solr query
+* `ht_search_results.py`: This class is responsible for presenting the Solr results
+* `Config_files`: This folder contains the YAML file setting the configuration of the Solr query
+* `indexing_data.sh`: This script is responsible for indexing data in the Solr server. 
+  In the folder `solr_dataset` there is a list of documents to index in the Solr server.
 
 
 ## Functionality
@@ -295,7 +300,7 @@ PROD and DEV servers.
 **Use case 4**: Do the same exact phrase query but export all results using solr result streaming:
 
 - This use case originated from an HTRC request. The HTRC needs to get the htids of the documents that are useful for creating the dataset.
-- The API is implemented in the `main.py`, that uses the script /ht_full_text_search/export_all_results.py to search the documents in the Solr server.
+- The API is implemented in the `main.py`, that uses the script `/ht_full_text_search/export_all_results.py` to search the documents in the Solr server.
 
 The API is running in the container full_text_search_api where `docker compose up -d` is executed.
 
@@ -307,8 +312,7 @@ You will see the following screen with the API endpoints:
 
 * Query endpoint: 
 
-`curl --location 'http://localhost:8000//query/?query=poetic%20justice&env=prod' \
---form 'query="'\''\"poetic justice\"'\''"'`
+`curl --location 'http://localhost:8000/query/?query=biennial%20report&env=dev' --form 'query="'\''\"biennial report\"'\''"'`
 
 * Status endpoint: 
 
@@ -316,7 +320,7 @@ You will see the following screen with the API endpoints:
 
 * You can also run the script `export_all_results.py` to search the documents in the Solr server.
 
-```docker compose exec full_text_searcher python ht_full_text_search/export_all_results.py '"justice blame"'```
+```docker compose exec full_text_searcher python ht_full_text_search/export_all_results.py --env dev --query '"good"'```
 
 * You can also run the API to search the documents in the Solr server using the command below:
 ```docker compose exec full_text_searcher python main.py --env dev```
@@ -334,7 +338,7 @@ You will see the following screen with the API endpoints:
 - Use the command `. $env_name/bin/activate` to activate the virtual environment inside the container $env_name is 
 the name of the virtual environment created by poetry.
 - Enter inside the docker file: `docker compose exec full_text_searcher /bin/bash`
-- Running the scripts: `docker compose exec full_text_searcher python ht_full_text_search/export_all_results.py '"justice blame"'`
+- Running the scripts: `docker compose exec full_text_searcher python ht_full_text_search/export_all_results.py --env dev --query '"good"'`
 
 ### Guides to install python and poetry on macOS
 
@@ -354,11 +358,7 @@ Recommendation: Use brew to install python and pyenv to manage the python versio
     * Inside the application folder: See the virtual environment used by the application `` poetry env use python ``
     * Activate the virtual environment: ``source ~/ht-indexer-GQmvgxw4-py3.11/bin/activate``, in Mac poetry creates
       their files in the home directory, e.g. /Users/user_name/Library/Caches/pypoetry/.
-    * `` poetry export -f requirements.txt --output requirements.txt ``
-    * Use `` poetry update `` if you change your .toml file and want to generate a new version the .lock file
-    * Use ``poetry add ruff@latest`` to add the last version of the package ruff to your project
-    * Use ``poetry add ruff@1.0.0`` to add a specific version of the package ruff to your project
-
+  
 ### Transforms the Solr query from string to JSON
 
 ``` 
