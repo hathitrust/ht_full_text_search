@@ -5,7 +5,8 @@ import sys
 # Full-text search config parameters
 SOLR_URL = {
     "prod": "http://macc-ht-solr-lss-1.umdl.umich.edu:8081/solr/core-1x/query",
-    "dev": "http://solr-lss-dev:8983/solr/core-x/query"
+    "dev": "http://solr-lss-dev:8983/solr/core-x/query",
+    "htrc": "https://analytics.dev.htrc.indiana.edu"
 }
 
 FULL_TEXT_SEARCH_SHARDS_X = ','.join([f"http://solr-sdr-search-{i}:8081/solr/core-{i}x" for i in range(1, 12)])
@@ -14,12 +15,8 @@ FULL_TEXT_SEARCH_SHARDS_Y = ','.join([f"http://solr-sdr-search-{i}:8081/solr/cor
 current_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 sys.path.insert(0, current_dir)
 
-QUERY_PARAMETER_CONFIG_FILE = "/".join(
-    [current_dir, "config_files/full_text_search/config_query.yaml"]
-)
-FACET_FILTERS_CONFIG_FILE = "/".join(
-    [current_dir, "config_files/full_text_search/config_facet_filters.yaml"]
-)
+QUERY_PARAMETER_CONFIG_FILE = os.path.join(current_dir, "config_files", "full_text_search", "config_query.yaml")
+FACET_FILTERS_CONFIG_FILE = os.path.join(current_dir, "config_files", "full_text_search", "config_facet_filters.yaml")
 
 DEFAULT_SOLR_PARAMS = {
     "rows": 500,
