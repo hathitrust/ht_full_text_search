@@ -141,7 +141,6 @@ def main():
         if not request.criteria:
             return {"error": "No search criteria provided"}
 
-        # Map field names
         field_map = {
             "Full Text & All Fields": "ocr",
             "All Fields": "all",
@@ -150,7 +149,6 @@ def main():
             "Subject": "subject"
         }
 
-        # Process all criteria individually
         all_results = []
 
         # Process each criterion and collect all results
@@ -172,10 +170,8 @@ def main():
             elif criteria.match_type == "any of these words":
                 operator = "OR"
 
-            # Get the formatted query using HTSearchQuery
             formatted_query = ht_query.manage_string_query_solr6(criteria.query, operator)
 
-            # Get results for this criterion
             criterion_results = []
             try:
                 for result in exporter_api['obj'].run_cursor(
