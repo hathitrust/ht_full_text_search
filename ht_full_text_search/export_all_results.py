@@ -2,6 +2,8 @@ import json
 import os
 import requests
 import yaml
+import csv
+import time
 from pathlib import Path
 from argparse import ArgumentParser
 from requests.auth import HTTPBasicAuth
@@ -150,7 +152,7 @@ class SolrExporter:
         """
 
         params = default_solr_params(self.environment)
-
+        # print(params,end="\n")
         # Replace the default list of fields with the one passed as a parameter
         if list_output_fields is not None:
             params["fl"] = ",".join(list_output_fields)
@@ -159,12 +161,17 @@ class SolrExporter:
         params["cursorMark"] = "*"
         # TODO: Implement the feature to access to Solr debug using this python script
         params["debugQuery"] = "true"
+        # print(params, end="\n")
         params["q"] = make_query(query_string, query_config_path, conf_query=conf_query)
+        print("print the query: ", params["q"])
+        # print(params, end="\n")
 
         while True:
             results = self.send_query(params)  # send_query
+            # print("Printing result.content: ", results.content)
 
             output = json.loads(results.content)
+            # print("printing output", output)
 
             for result in output['response']['docs']:
                 yield process_results(result, list_output_fields)
@@ -172,6 +179,91 @@ class SolrExporter:
                 params["cursorMark"] = output["nextCursorMark"]
             else:
                 break
+
+    def export_ids_to_csv(self, query_string, output_path, query_config_path=None, conf_query="ocr"):
+        """
+        Export IDs directly to a CSV file for efficient processing
+
+        Args:
+            query_string: The search query
+            output_path: Path to save the CSV file
+            query_config_path: Path to config file
+            conf_query: Configuration section to use
+
+        Returns:
+            Dict with results information
+        """
+        start_time = time.time()
+
+        # Initialize params from default but OVERRIDE the "fl" field
+        params = default_solr_params(self.environment)
+        params["fl"] = "id"  # Always only request IDs regardless of default config
+        params["cursorMark"] = "*"
+        params["rows"] = 5000  # Larger batch size
+        params["q"] = make_query(query_string, query_config_path, conf_query=conf_query)
+        print(params["q"])
+
+        # Make sure directory exists
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+        # Create CSV and write header
+        with open(output_path, 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(['id'])
+
+        total_ids = 0
+        batch_size = 10000
+        ids_batch = []
+
+        while True:
+            results = self.send_query(params)
+            try:
+                data = json.loads(results.content)
+
+                # Process the batch - extract ONLY the ids regardless of what fields were returned
+                for doc in data['response']['docs']:
+                    if 'id' in doc:
+                        ids_batch.append([doc['id']])
+                        total_ids += 1
+
+                # Write batch when it reaches size threshold
+                if len(ids_batch) >= batch_size:
+                    with open(output_path, 'a', newline='') as csvfile:
+                        writer = csv.writer(csvfile)
+                        writer.writerows(ids_batch)
+                    print(f"Wrote batch of {len(ids_batch)} IDs, total: {total_ids}")
+                    ids_batch = []
+
+                # Check if we've reached the end
+                if params["cursorMark"] == data["nextCursorMark"]:
+                    break
+
+                # Update cursor for next batch
+                params["cursorMark"] = data["nextCursorMark"]
+
+            except json.JSONDecodeError as e:
+                print(f"Error decoding JSON: {e}")
+                print(f"Response content (first 200 chars): {results.content[:200]}")
+                # Try to continue with next batch if possible
+                if 'nextCursorMark' in params and params["cursorMark"] != params["nextCursorMark"]:
+                    params["cursorMark"] = params["nextCursorMark"]
+                else:
+                    break
+
+        # Write any remaining IDs
+        if ids_batch:
+            with open(output_path, 'a', newline='') as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerows(ids_batch)
+
+        total_time = time.time() - start_time
+
+        return {
+            "status": "success",
+            "file_path": output_path,
+            "total_records": total_ids,
+            "processing_time_seconds": total_time
+        }
 
     @staticmethod
     def create_boost_phrase_fields(query_fields):
@@ -219,5 +311,5 @@ if __name__ == "__main__":
     )
 
     # '"good"'
-    for x in solr_exporter.run_cursor(args.query, query_config_path=query_config_file_path, conf_query="ocr"):
-        print(x)
+    # for x in solr_exporter.run_cursor(args.query, query_config_path=query_config_file_path, conf_query="ocr"):
+    #     print(x)
