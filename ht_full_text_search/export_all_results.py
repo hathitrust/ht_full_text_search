@@ -53,6 +53,7 @@ def process_results(item: dict, list_output_fields: list) -> str:
     """
 
     result = {field: item.get(field, None) for field in list_output_fields}
+    
     return json.dumps(result)
 
 
@@ -63,21 +64,36 @@ def solr_query_params(query_config_file=None, conf_query="ocr"):
     :param conf_query: str, query configuration name. Each query has a name to identify it.
     :return: str, formatted Solr query parameters
     """
+    if isinstance(conf_query,str):
+        conf_query = [conf_query]
+    params = {}
+    mm = []
+    tie = []
+    pf = []
+    qf = []
+    for query in conf_query:
+        with open(query_config_file, "r") as file:
+            data = yaml.safe_load(file)[query]
 
-    with open(query_config_file, "r") as file:
-        data = yaml.safe_load(file)[conf_query]
+            mm.append(data["mm"])
+            tie.append(data["tie"])
+            
 
-        params = {
-            "mm": data["mm"],
-            "tie": data["tie"]
-        }
+            if "pf" in data:
+                pf.append(SolrExporter.create_boost_phrase_fields(data["pf"]))
+            if "qf" in data:
+                qf.append(SolrExporter.create_boost_phrase_fields(data["qf"]))
 
-        if "pf" in data:
-            params.update({"pf": SolrExporter.create_boost_phrase_fields(data["pf"])})
-        if "qf" in data:
-            params.update({"qf": SolrExporter.create_boost_phrase_fields(data["qf"])})
+    # import pdb;pdb.set_trace()
 
-        return " ".join([f"{k}='{v}'" for k, v in params.items()])
+    params = {
+        "mm" : mm[0],
+        "tie" : tie[0],
+        "pf": " ".join(pf),
+        "qf": " ".join(qf),
+    }
+
+    return " ".join([f"{k}='{v}'" for k, v in params.items()])
 
 
 def make_query(query, query_config_file=None, conf_query="ocr"):
@@ -163,7 +179,12 @@ class SolrExporter:
         params["debugQuery"] = "true"
         # print(params, end="\n")
         params["q"] = make_query(query_string, query_config_path, conf_query=conf_query)
-        print("print the query: ", params["q"])
+        print("print the query:1 ", params["q"])
+        # params["q"] = """{!edismax mm='100%' tie='0.1' pf='author^25000 author2^20000 author_top^5000 author_rest^1000 title_ab^25000 title_a^15000 titleProper^1200 title_topProper^600 title_restProper^400 series^300 series2^300' qf='author^100 titleProper^120 title_topProper^60 title_restProper^40 series^50 series2^50 title^30 title_top^20 title_rest^10'} (title:Economic AND Theory) AND (author:Keynes)"""
+                        #   !edismax mm='100%' tie='0.1' pf='author^25000 author2^20000 author_top^5000 author_rest^1000 title_ab^25000 title_a^15000 titleProper^1200 title_topProper^600 title_restProper^400 series^300 series2^300' qf='author^100 titleProper^120 title_topProper^60 title_restProper^40 series^50 series2^50 title^30 title_top^20 title_rest^10'} (author:keynes) OR (title:Economic AND Theory)
+        # {!edismax mm='100%' tie='0.1' pf='topicProper^5 topic^1 fullgeographic^1 fullgenre^1 era^1' qf='topicProper^5 topic^1 fullgeographic^1 fullgenre^1 era^1'} (subject:Cultural AND Memory)
+        # {!edismax mm='100%' tie='0.1' pf='topicProper^5 topic^1 fullgeographic^1 fullgenre^1 era^1' qf='topicProper^5 topic^1 fullgeographic^1 fullgenre^1 era^1'} Cultural AND Memory
+        print("print the query:ws ", params["q"])
         # print(params, end="\n")
 
         while True:
@@ -171,8 +192,8 @@ class SolrExporter:
             # print("Printing result.content: ", results.content)
 
             output = json.loads(results.content)
-            # print("printing output", output)
-
+            # print("printing output", output, len(output))
+            print(len(output['response']['docs']))
             for result in output['response']['docs']:
                 yield process_results(result, list_output_fields)
             if params["cursorMark"] != output["nextCursorMark"]:
@@ -202,6 +223,7 @@ class SolrExporter:
         params["rows"] = 5000  # Larger batch size
         params["q"] = make_query(query_string, query_config_path, conf_query=conf_query)
         print(params["q"])
+        
 
         # Make sure directory exists
         os.makedirs(os.path.dirname(output_path), exist_ok=True)

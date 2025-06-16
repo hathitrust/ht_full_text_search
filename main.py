@@ -30,11 +30,11 @@ class SearchRequest(BaseModel):
 class SearchCriteria(BaseModel):
     field: str  # Field type (title, author, etc.)
     query: str  # Search term
-    match_type: str  # "all of these words", "any of these words", "this exact phrase"
+    match_type: str="all of these words"  # "all of these words", "any of these words", "this exact phrase"
 
 class AdvancedSearchRequest(BaseModel):
     criteria: List[SearchCriteria]
-    field_operators: List[str]  # "AND" or "OR" between fields
+    field_operators: List[str]=[]  # "AND" or "OR" between fields
     format: str = "json"  # Output format
 
 exporter_api = {}
@@ -153,9 +153,15 @@ def main():
         # Process all criteria individually
         all_results = []
 
+        query_fields = []
+        fields = []
+        
+
         # Process each criterion and collect all results
         for criteria in request.criteria:
             field = field_map.get(criteria.field, criteria.field)
+            fields.append(field)
+            
 
             # Use HTSearchQuery to properly format the query
             ht_query = HTSearchQuery(
@@ -172,24 +178,44 @@ def main():
             elif criteria.match_type == "any of these words":
                 operator = "OR"
 
-            # Get the formatted query using HTSearchQuery
-            formatted_query = ht_query.manage_string_query_solr6(criteria.query, operator)
-
+            # Get the formatted query using HTSearchQuery            
+            formatted_query = ht_query.manage_string_query_solr6(criteria.query, operator, field if len(request.criteria)>1 else None)
+            query_fields.append(formatted_query)
             # Get results for this criterion
             criterion_results = []
-            try:
-                for result in exporter_api['obj'].run_cursor(
-                        formatted_query,
-                        query_config_path=query_config_file_path,
-                        conf_query=field
-                ):
-                    criterion_results.append(json.loads(result))
+            
+            # try:
+            #     for result in exporter_api['obj'].run_cursor(
+            #             query_fields,
+            #             query_config_path=query_config_file_path,
+            #             conf_query=field
+            #     ):
+            #         criterion_results.append(json.loads(result))
 
-                print(f"Query for {field} with '{formatted_query}' returned {len(criterion_results)} results")
-                all_results.append(criterion_results)
-            except Exception as e:
-                print(f"Error getting results for {field}: {e}")
-                return {"error": f"Error with query: {str(e)}"}
+            #     print(f"Query for {field} with '{formatted_query}' returned {len(criterion_results)} results")
+            #     all_results.append(criterion_results)
+            # except Exception as e:
+            #     print(f"Error getting results for {field}: {e}")
+            #     return {"error": f"Error with query: {str(e)}"}
+
+        joined_query = query_fields[0]
+        for i in range(1, len(query_fields)):
+            if i - 1 < len(request.field_operators):  # check if operator at i-1 exists
+                op = request.field_operators[i - 1]
+            else:
+                op = "AND"
+            joined_query += f" {op} {query_fields[i]}"
+        # query_fields = " OR ".join(query_fields)
+        print(fields, joined_query)
+        return StreamingResponse(
+            exporter_api['obj'].run_cursor(
+                joined_query,
+                query_config_path=query_config_file_path,
+                conf_query=fields
+            ),
+            media_type="application/json"
+        )
+            
 
         # Now combine results based on operators
         if not all_results:

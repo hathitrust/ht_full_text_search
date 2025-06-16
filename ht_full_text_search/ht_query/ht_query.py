@@ -134,7 +134,7 @@ class HTSearchQuery:
             return query_string_dict
 
     @staticmethod
-    def manage_string_query_solr6(input_phrase: Text, operator: Text = None) -> str| None:
+    def manage_string_query_solr6(input_phrase: Text, operator: Text = None, field:str=None) -> str| None:
         """
         This function transform a query_string in Solr string format
 
@@ -147,11 +147,17 @@ class HTSearchQuery:
         """
 
         # query_string_dict = {"q": HTSearchQuery.get_exact_phrase_query(input_phrase)}
+        formatted_query = ""
         if operator == "OR" or operator == "AND":
             # " AND ".join(input_phrase.split())
-            return f" {operator} ".join(input_phrase.split())  # input_phrase
+            formatted_query = f" {operator} ".join(input_phrase.split())            
         elif operator is None:
-            return "\"" + input_phrase + "\""
+            formatted_query = "\"" + input_phrase + "\""
+
+        if field:
+            return f"({field}:{formatted_query})"
+        return formatted_query
+
 
     def create_params_dict(self, start: int = 0, rows: int = 100) -> Dict:
 
