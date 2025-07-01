@@ -107,6 +107,8 @@ def make_query(query, query_config_file=None, conf_query="ocr"):
     return f"{{!edismax {solr_query_params(query_config_file=query_config_file, conf_query=conf_query)}}} {query}"
 
 
+
+
 class SolrExporter:
 
     def __init__(self, solr_url: str, env: str, user=None, password=None):
@@ -142,7 +144,7 @@ class SolrExporter:
 
         return response
 
-    def run_cursor(self, query_string, query_config_path=None, conf_query="ocr", list_output_fields: list = None):
+    def run_cursor(self, query_string, query_config_path=None, conf_query="ocr", list_output_fields: list = None,fq_formatted=None):
 
         # TODO: This function will receive the query string and the query type (ocr or all). From memory, it will
         # instantiate the query parameters (params["q"]) and run the query.
@@ -179,12 +181,14 @@ class SolrExporter:
         params["debugQuery"] = "true"
         # print(params, end="\n")
         params["q"] = make_query(query_string, query_config_path, conf_query=conf_query)
-        print("print the query:1 ", params["q"])
+        if fq_formatted:
+            params["fq"] = fq_formatted
+        print("print the query:1 ", params)
         # params["q"] = """{!edismax mm='100%' tie='0.1' pf='author^25000 author2^20000 author_top^5000 author_rest^1000 title_ab^25000 title_a^15000 titleProper^1200 title_topProper^600 title_restProper^400 series^300 series2^300' qf='author^100 titleProper^120 title_topProper^60 title_restProper^40 series^50 series2^50 title^30 title_top^20 title_rest^10'} (title:Economic AND Theory) AND (author:Keynes)"""
                         #   !edismax mm='100%' tie='0.1' pf='author^25000 author2^20000 author_top^5000 author_rest^1000 title_ab^25000 title_a^15000 titleProper^1200 title_topProper^600 title_restProper^400 series^300 series2^300' qf='author^100 titleProper^120 title_topProper^60 title_restProper^40 series^50 series2^50 title^30 title_top^20 title_rest^10'} (author:keynes) OR (title:Economic AND Theory)
         # {!edismax mm='100%' tie='0.1' pf='topicProper^5 topic^1 fullgeographic^1 fullgenre^1 era^1' qf='topicProper^5 topic^1 fullgeographic^1 fullgenre^1 era^1'} (subject:Cultural AND Memory)
         # {!edismax mm='100%' tie='0.1' pf='topicProper^5 topic^1 fullgeographic^1 fullgenre^1 era^1' qf='topicProper^5 topic^1 fullgeographic^1 fullgenre^1 era^1'} Cultural AND Memory
-        print("print the query:ws ", params["q"])
+        
         # print(params, end="\n")
 
         while True:

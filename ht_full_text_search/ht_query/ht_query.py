@@ -134,6 +134,44 @@ class HTSearchQuery:
             return query_string_dict
 
     @staticmethod
+    def make_date_fq(start_date, end_date, p_date):        
+        date_range_facet = 'publishDateRange'
+        date_trie_facet = 'publishDateTrie'
+
+        # if date_type == "both":
+        #     date_range_facet = 'bothPublishDateRange'
+        #     date_trie_facet = 'bothPublishDateTrie'
+
+        q = ""
+        fq = ""
+
+    
+    
+        if p_date is not None and p_date.strip() != "":
+            facet = f'{date_range_facet}:"{p_date}"'                
+            fq = facet
+
+        elif (start_date is not None and start_date.strip() != "") or (end_date is not None and end_date.strip() != ""):
+            start_date = start_date if start_date and start_date.strip() != "" else "*"
+            end_date = end_date if end_date and end_date.strip() != "" else "*"
+            fq = f'{date_trie_facet}:[ {start_date} TO {end_date} ]'
+        else:
+            return ""        
+
+        return fq
+    
+    @staticmethod
+    def make_language_fq(languages:list):        
+        lang_facet = 'language008_full'
+
+        fq = ""
+        if languages:
+            lang = " OR ".join(languages)
+            fq = f"{lang_facet}:({lang})"        
+
+        return fq
+    
+    @staticmethod
     def manage_string_query_solr6(input_phrase: Text, operator: Text = None, field:str=None) -> str| None:
         """
         This function transform a query_string in Solr string format

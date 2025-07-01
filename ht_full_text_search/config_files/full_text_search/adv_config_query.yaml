@@ -151,3 +151,9 @@ subject:
     - [era, 1]
   mm: "100%"
   tie: 0.1
+
+year:
+  qf:
+    - [publishDateRange, 25000]
+  mm: "100%"
+  tie: 0.9
