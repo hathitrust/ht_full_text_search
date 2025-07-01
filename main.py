@@ -36,6 +36,10 @@ class AdvancedSearchRequest(BaseModel):
     criteria: List[SearchCriteria]
     field_operators: List[str]=[]  # "AND" or "OR" between fields
     format: str = "json"  # Output format
+    start_year: str = "",
+    end_year: str = "",
+    in_year: str = "",
+    languages : list = []
 
 exporter_api = {}
 
@@ -146,7 +150,7 @@ def main():
             "All Fields": "all",
             "Title": "title",
             "Author": "author",
-            "Subject": "subject"
+            "Subject": "subject"            
         }
 
         all_results = []
@@ -206,12 +210,23 @@ def main():
                 op = "AND"
             joined_query += f" {op} {query_fields[i]}"
         # query_fields = " OR ".join(query_fields)
-        print(fields, joined_query)
+
+        fq_joined = []
+        date_range_fq = ht_query.make_date_fq(request.start_year,request.end_year,request.in_year)
+        if date_range_fq:
+            fq_joined.append(date_range_fq)
+        language_fq = ht_query.make_language_fq(request.languages)
+        if language_fq:
+            fq_joined.append(language_fq)
+
+        fq_formatted = " AND ".join(fq_joined)
+
+        print(fields, joined_query,fq_formatted)
         return StreamingResponse(
             exporter_api['obj'].run_cursor(
                 joined_query,
                 query_config_path=query_config_file_path,
-                conf_query=fields
+                conf_query=fields,fq_formatted=fq_formatted
             ),
             media_type="application/json"
         )
