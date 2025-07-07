@@ -21,10 +21,11 @@ from ht_full_text_search.config_files import config_files_path
 
 from pydantic import BaseModel
 
+#Using for query endpoint
 class SearchRequest(BaseModel):
     field: str = "ocr"  # Default to ocr"
     query: str
-    format: str = "json"  # Default to JSON, can be "csv"
+    file_type: str = "json"  # Default to JSON, can be "csv"
 
 # Models for advanced search
 class SearchCriteria(BaseModel):
@@ -32,6 +33,7 @@ class SearchCriteria(BaseModel):
     query: str  # Search term
     match_type: str="all of these words"  # "all of these words", "any of these words", "this exact phrase"
 
+#Using for Advance search endpoint
 class AdvancedSearchRequest(BaseModel):
     criteria: List[SearchCriteria]
     field_operators: List[str]=[]  # "AND" or "OR" between fields
