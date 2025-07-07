@@ -161,13 +161,20 @@ class HTSearchQuery:
         return fq
     
     @staticmethod
-    def make_language_fq(languages:list):        
-        lang_facet = 'language008_full'
-
+    def make_listed_fq(field,values:list|str):    
+        
+        facet_mapping = {
+                "language":"language008_full",
+                "format":"format",
+                "location": "htsource"
+            }            
+        facet = facet_mapping.get(field)
         fq = ""
-        if languages:
-            lang = " OR ".join(languages)
-            fq = f"{lang_facet}:({lang})"        
+        if isinstance(values,str):
+            return f'{facet}:"{values}"'
+        if facet and values:
+            lang = " OR ".join(values)
+            fq = f"{facet}:({lang})"        
 
         return fq
     

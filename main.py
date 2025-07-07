@@ -35,11 +35,14 @@ class SearchCriteria(BaseModel):
 class AdvancedSearchRequest(BaseModel):
     criteria: List[SearchCriteria]
     field_operators: List[str]=[]  # "AND" or "OR" between fields
-    format: str = "json"  # Output format
-    start_year: str = "",
-    end_year: str = "",
-    in_year: str = "",
+    file_type: str = "json"  # Output format
+    start_year: str = ""
+    end_year: str = ""
+    in_year: str = ""
     languages : list = []
+    formats : list = []
+    location : str = ""
+
 
 exporter_api = {}
 
@@ -108,7 +111,7 @@ def main():
         #                                                         conf_query=request.field), media_type="application/json")
 
         # Option 1: returning the streaming response
-        if request.format.lower() == "json":
+        if request.file_type.lower() == "json":
             print("Generating Json output")
             return StreamingResponse(
                 exporter_api['obj'].run_cursor(
@@ -120,7 +123,7 @@ def main():
             )
 
         # Option 2: For CSV generation
-        elif request.format.lower() == "csv":
+        elif request.file_type.lower() == "csv":
             print("Generating CSV output")
             timestamp = time.strftime("%Y%m%d_%H%M%S")
             output_path = f"/Users/umkatta/Desktop/CSV/{request.query}_{timestamp}.csv"
@@ -206,18 +209,30 @@ def main():
         for i in range(1, len(query_fields)):
             if i - 1 < len(request.field_operators):  # check if operator at i-1 exists
                 op = request.field_operators[i - 1]
-            else:
+            else:   
                 op = "AND"
             joined_query += f" {op} {query_fields[i]}"
         # query_fields = " OR ".join(query_fields)
 
         fq_joined = []
         date_range_fq = ht_query.make_date_fq(request.start_year,request.end_year,request.in_year)
+        
         if date_range_fq:
             fq_joined.append(date_range_fq)
-        language_fq = ht_query.make_language_fq(request.languages)
-        if language_fq:
-            fq_joined.append(language_fq)
+
+        filter_fields = {
+            "language":request.languages,
+            "format":request.formats,
+            "location":request.location
+        }        
+
+        for field,value in filter_fields.items():  
+            field_fq = ""
+            if value:              
+                field_fq = ht_query.make_listed_fq(field,value)            
+            if field_fq:
+                fq_joined.append(field_fq)
+                 
 
         fq_formatted = " AND ".join(fq_joined)
 
@@ -261,7 +276,7 @@ def main():
         print(f"Final combined results: {len(combined_results)}")
 
         # Return results in requested format
-        if request.format.lower() == "csv":
+        if request.file_type.lower() == "csv":
             timestamp = time.strftime("%Y%m%d_%H%M%S")
             output_path = f"/Users/umkatta/Desktop/CSV/advanced_search_{timestamp}.csv"
 
@@ -367,7 +382,7 @@ def main():
     #     print(f"Final combined results: {len(combined_results)}")
     #
     #     # Return results in requested format
-    #     if request.format.lower() == "csv":
+    #     if request.file_type.lower() == "csv":
     #         timestamp = time.strftime("%Y%m%d_%H%M%S")
     #         output_path = f"/Users/umkatta/Desktop/CSV/advanced_search_{timestamp}.csv"
     #
