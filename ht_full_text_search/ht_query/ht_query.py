@@ -134,7 +134,7 @@ class HTSearchQuery:
             return query_string_dict
 
     @staticmethod
-    def make_date_fq(start_date, end_date, p_date):        
+    def make_date_fq(start_date, end_date, in_date):        
         date_range_facet = 'publishDateRange'
         date_trie_facet = 'publishDateTrie'
 
@@ -147,11 +147,13 @@ class HTSearchQuery:
 
     
     
-        if p_date is not None and p_date.strip() != "":
-            facet = f'{date_range_facet}:"{p_date}"'                
+        if in_date is not None and in_date.strip() != "":
+            # During year
+            facet = f'{date_range_facet}:"{in_date}"'                
             fq = facet
 
         elif (start_date is not None and start_date.strip() != "") or (end_date is not None and end_date.strip() != ""):
+            # in between / After / before dates
             start_date = start_date if start_date and start_date.strip() != "" else "*"
             end_date = end_date if end_date and end_date.strip() != "" else "*"
             fq = f'{date_trie_facet}:[ {start_date} TO {end_date} ]'
@@ -173,8 +175,8 @@ class HTSearchQuery:
         if isinstance(values,str):
             return f'{facet}:"{values}"'
         if facet and values:
-            lang = " OR ".join(values)
-            fq = f"{facet}:({lang})"        
+            facet_value = " OR ".join(values)
+            fq = f"{facet}:({facet_value})"        
 
         return fq
     

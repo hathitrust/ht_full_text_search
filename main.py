@@ -107,10 +107,6 @@ def main():
 
         # streaming_response =  StreamingResponse(exporter_api['obj'].run_cursor(request.query, query_config_path=query_config_file_path,
         #                                                         conf_query=request.field), media_type="application/json")
-        # response = await process_streaming_response(streaming_response, "/Users/umkatta/Desktop/CSV")
-
-        # return StreamingResponse(exporter_api['obj'].run_cursor(request.query, query_config_path=query_config_file_path,
-        #                                                         conf_query=request.field), media_type="application/json")
 
         # Option 1: returning the streaming response
         if request.file_type.lower() == "json":
@@ -192,20 +188,6 @@ def main():
             # Get results for this criterion
 
             criterion_results = []
-            
-            # try:
-            #     for result in exporter_api['obj'].run_cursor(
-            #             query_fields,
-            #             query_config_path=query_config_file_path,
-            #             conf_query=field
-            #     ):
-            #         criterion_results.append(json.loads(result))
-
-            #     print(f"Query for {field} with '{formatted_query}' returned {len(criterion_results)} results")
-            #     all_results.append(criterion_results)
-            # except Exception as e:
-            #     print(f"Error getting results for {field}: {e}")
-            #     return {"error": f"Error with query: {str(e)}"}
 
         joined_query = query_fields[0]
         for i in range(1, len(query_fields)):
@@ -238,7 +220,6 @@ def main():
 
         fq_formatted = " AND ".join(fq_joined)
 
-        print(fields, joined_query,fq_formatted)
         return StreamingResponse(
             exporter_api['obj'].run_cursor(
                 joined_query,
@@ -248,162 +229,6 @@ def main():
             media_type="application/json"
         )
             
-
-        # Now combine results based on operators
-        if not all_results:
-            return {"error": "No results found for any criteria"}
-
-        # Start with first criterion's results
-        combined_results = all_results[0]
-        combined_ids = {r.get("id") for r in combined_results}
-
-        # Apply operators
-        for i in range(1, len(all_results)):
-            criterion_results = all_results[i]
-            criterion_ids = {r.get("id") for r in criterion_results}
-
-            operator = request.field_operators[i - 1] if i - 1 < len(request.field_operators) else "AND"
-
-            if operator == "AND":
-                # Keep only IDs that appear in both sets
-                combined_ids = combined_ids.intersection(criterion_ids)
-                combined_results = [r for r in combined_results if r.get("id") in combined_ids]
-            else:  # OR
-                # Add new IDs from this criterion
-                new_ids = criterion_ids - combined_ids
-                new_results = [r for r in criterion_results if r.get("id") in new_ids]
-                combined_results.extend(new_results)
-                combined_ids.update(criterion_ids)
-
-        print(f"Final combined results: {len(combined_results)}")
-
-        # Return results in requested format
-        if request.file_type.lower() == "csv":
-            timestamp = time.strftime("%Y%m%d_%H%M%S")
-            output_path = f"/Users/umkatta/Desktop/CSV/advanced_search_{timestamp}.csv"
-
-            # Create CSV directly
-            with open(output_path, 'w', newline='') as csvfile:
-                writer = csv.writer(csvfile)
-                writer.writerow(['id'])
-                for result in combined_results:
-                    writer.writerow([result.get("id", "")])
-
-            return {
-                "status": "success",
-                "file_path": output_path,
-                "total_records": len(combined_results)
-            }
-        else:
-            # Return JSON directly
-            return {"results": combined_results, "count": len(combined_results)}
-
-
-    '''
-    This function is working fine dont remove this
-    '''
-    # @app.post("/advanced_search/")
-    # async def advanced_search(request: AdvancedSearchRequest):
-    #     """
-    #     Advanced search that works for both single and multiple criteria.
-    #     """
-    #     query_config_file_path = Path(config_files_path, 'full_text_search/adv_config_query.yaml')
-    #
-    #     if not request.criteria:
-    #         return {"error": "No search criteria provided"}
-    #
-    #     # Map field names
-    #     field_map = {
-    #         "Full Text & All Fields": "ocr",
-    #         "All Fields": "all",
-    #         "Title": "title",
-    #         "Author": "author",
-    #         "Subject": "subject"
-    #     }
-    #
-    #     # Process all criteria individually
-    #     all_results = []
-    #
-    #     # Process each criterion and collect all results
-    #     for criteria in request.criteria:
-    #         field = field_map.get(criteria.field, criteria.field)
-    #
-    #         # Process query
-    #         if criteria.match_type == "this exact phrase":
-    #             query = f'"{criteria.query}"'
-    #         elif criteria.match_type == "all of these words":
-    #             query = " AND ".join(criteria.query.split())
-    #         elif criteria.match_type == "any of these words":
-    #             query = " OR ".join(criteria.query.split())
-    #         else:
-    #             query = criteria.query
-    #
-    #         # Get results for this criterion
-    #         criterion_results = []
-    #         try:
-    #             for result in exporter_api['obj'].run_cursor(
-    #                     query,
-    #                     query_config_path=query_config_file_path,
-    #                     conf_query=field
-    #                     # list_output_fields=["id"]
-    #             ):
-    #                 criterion_results.append(json.loads(result))
-    #
-    #             print(f"Query for {field} with '{query}' returned {len(criterion_results)} results")
-    #             all_results.append(criterion_results)
-    #         except Exception as e:
-    #             print(f"Error getting results for {field}: {e}")
-    #             return {"error": f"Error with query: {str(e)}"}
-    #
-    #     # Now combine results based on operators
-    #     if not all_results:
-    #         return {"error": "No results found for any criteria"}
-    #
-    #     # Start with first criterion's results
-    #     combined_results = all_results[0]
-    #     combined_ids = {r.get("id") for r in combined_results}
-    #
-    #     # Apply operators
-    #     for i in range(1, len(all_results)):
-    #         criterion_results = all_results[i]
-    #         criterion_ids = {r.get("id") for r in criterion_results}
-    #
-    #         operator = request.field_operators[i - 1] if i - 1 < len(request.field_operators) else "AND"
-    #
-    #         if operator == "AND":
-    #             # Keep only IDs that appear in both sets
-    #             combined_ids = combined_ids.intersection(criterion_ids)
-    #             combined_results = [r for r in combined_results if r.get("id") in combined_ids]
-    #         else:  # OR
-    #             # Add new IDs from this criterion
-    #             new_ids = criterion_ids - combined_ids
-    #             new_results = [r for r in criterion_results if r.get("id") in new_ids]
-    #             combined_results.extend(new_results)
-    #             combined_ids.update(criterion_ids)
-    #
-    #     print(f"Final combined results: {len(combined_results)}")
-    #
-    #     # Return results in requested format
-    #     if request.file_type.lower() == "csv":
-    #         timestamp = time.strftime("%Y%m%d_%H%M%S")
-    #         output_path = f"/Users/umkatta/Desktop/CSV/advanced_search_{timestamp}.csv"
-    #
-    #         # Create CSV directly
-    #         with open(output_path, 'w', newline='') as csvfile:
-    #             writer = csv.writer(csvfile)
-    #             writer.writerow(['id'])
-    #             for result in combined_results:
-    #                 writer.writerow([result.get("id", "")])
-    #
-    #         return {
-    #             "status": "success",
-    #             "file_path": output_path,
-    #             "total_records": len(combined_results)
-    #         }
-    #     else:
-    #         # Return JSON directly
-    #         return {"results": combined_results, "count": len(combined_results)}
-
     @app.post("/search_results/")
     def solr_search_results():
         """
