@@ -134,6 +134,39 @@ class HTSearchQuery:
             return query_string_dict
 
     @staticmethod
+    def get_criteria_fields_query(criterias, field_operators, field_map):
+        # Process each criterion and collect all results
+        query_fields = []
+        fields = []
+
+        for criteria in criterias:
+            field = field_map.get(criteria.field, criteria.field)
+            fields.append(field)
+            
+            # Map match_type to operator
+            operator = None  # Default for exact phrase
+            if criteria.match_type == "all of these words":
+                operator = "AND"
+            elif criteria.match_type == "any of these words":
+                operator = "OR"
+
+            # Get the formatted query using HTSearchQuery            
+            formatted_query = HTSearchQuery.manage_string_query_solr6(criteria.query, operator, field if len(criterias)>1 else None)
+            query_fields.append(formatted_query)
+            # Get results for this criterion
+
+        joined_query = query_fields[0]
+        for i in range(1, len(query_fields)):
+            if i - 1 < len(field_operators):  # check if operator at i-1 exists
+                op = field_operators[i - 1]
+            else:   
+                op = "AND"
+            joined_query += f" {op} {query_fields[i]}"
+        # query_fields = " OR ".join(query_fields)
+        return fields, joined_query
+
+
+    @staticmethod
     def make_date_fq(start_date, end_date, in_date):        
         date_range_facet = 'publishDateRange'
         date_trie_facet = 'publishDateTrie'
@@ -142,11 +175,8 @@ class HTSearchQuery:
         #     date_range_facet = 'bothPublishDateRange'
         #     date_trie_facet = 'bothPublishDateTrie'
 
-        q = ""
         fq = ""
 
-    
-    
         if in_date is not None and in_date.strip() != "":
             # During year
             facet = f'{date_range_facet}:"{in_date}"'                

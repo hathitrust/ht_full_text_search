@@ -108,38 +108,24 @@ def main():
         # streaming_response =  StreamingResponse(exporter_api['obj'].run_cursor(request.query, query_config_path=query_config_file_path,
         #                                                         conf_query=request.field), media_type="application/json")
 
-        # Option 1: returning the streaming response
-        if request.file_type.lower() == "json":
-            print("Generating Json output")
-            return StreamingResponse(
-                exporter_api['obj'].run_cursor(
-                    request.query,
-                    query_config_path=query_config_file_path,
-                    conf_query=request.field
-                ),
-                media_type="application/json"
-            )
-
-        # Option 2: For CSV generation
-        elif request.file_type.lower() == "csv":
-            print("Generating CSV output")
-            timestamp = time.strftime("%Y%m%d_%H%M%S")
-            output_path = f"/Users/umkatta/Desktop/CSV/{request.query}_{timestamp}.csv"
-
-            # This calls the new method in SolrExporter
-            result = exporter_api['obj'].export_ids_to_csv(
+                   
+        return StreamingResponse(
+            exporter_api['obj'].run_cursor(
                 request.query,
-                output_path,
                 query_config_path=query_config_file_path,
-                conf_query=request.field
-            )
-            return result
+                conf_query=request.field,
+                file_type=request.file_type.lower()
+            ),
+            media_type="application/json"
+        )
 
+        
     @app.post("/advanced_search/")
     async def advanced_search(request: AdvancedSearchRequest):
         """
         Advanced search using edismax query syntax with proper field and operator handling.
-        """
+        """        
+
         query_config_file_path = Path(config_files_path, 'full_text_search/adv_config_query.yaml')
         facet_config_file_path = Path(config_files_path, 'full_text_search/config_facet_filters.yaml')
 
@@ -153,53 +139,11 @@ def main():
             "Author": "author",
             "Subject": "subject"            
         }
-
-        all_results = []
-
-        query_fields = []
-        fields = []
         
-
-        # Process each criterion and collect all results
-        for criteria in request.criteria:
-            field = field_map.get(criteria.field, criteria.field)
-            fields.append(field)
-            
-
-            # Use HTSearchQuery to properly format the query
-            ht_query = HTSearchQuery(
-                config_query=field,
-                config_query_path=str(query_config_file_path),
-                config_facet_field="all",
-                config_facet_field_path=str(facet_config_file_path)
-            )
-
-            # Map match_type to operator
-            operator = None  # Default for exact phrase
-            if criteria.match_type == "all of these words":
-                operator = "AND"
-            elif criteria.match_type == "any of these words":
-                operator = "OR"
-
-
-            # Get the formatted query using HTSearchQuery            
-            formatted_query = ht_query.manage_string_query_solr6(criteria.query, operator, field if len(request.criteria)>1 else None)
-            query_fields.append(formatted_query)
-            # Get results for this criterion
-
-            criterion_results = []
-
-        joined_query = query_fields[0]
-        for i in range(1, len(query_fields)):
-            if i - 1 < len(request.field_operators):  # check if operator at i-1 exists
-                op = request.field_operators[i - 1]
-            else:   
-                op = "AND"
-            joined_query += f" {op} {query_fields[i]}"
-        # query_fields = " OR ".join(query_fields)
-
+        fields, joined_query = HTSearchQuery.get_criteria_fields_query(request.criteria, request.field_operators, field_map)
+        
         fq_joined = []
-        date_range_fq = ht_query.make_date_fq(request.start_year,request.end_year,request.in_year)
+        date_range_fq = HTSearchQuery.make_date_fq(request.start_year,request.end_year,request.in_year)
         
         if date_range_fq:
             fq_joined.append(date_range_fq)
@@ -213,18 +157,28 @@ def main():
         for field,value in filter_fields.items():  
             field_fq = ""
             if value:              
-                field_fq = ht_query.make_listed_fq(field,value)            
+                field_fq = HTSearchQuery.make_listed_fq(field,value)            
             if field_fq:
                 fq_joined.append(field_fq)
                  
 
         fq_formatted = " AND ".join(fq_joined)
 
+        
+        data = exporter_api['obj'].run_cursor(
+                joined_query,
+                query_config_path=query_config_file_path,
+                conf_query=fields,fq_formatted=fq_formatted,
+                file_type=request.file_type.lower() 
+            )     
+        return StreamingResponse(data,media_type="application/json")
+
         return StreamingResponse(
             exporter_api['obj'].run_cursor(
                 joined_query,
                 query_config_path=query_config_file_path,
-                conf_query=fields,fq_formatted=fq_formatted
+                conf_query=fields,fq_formatted=fq_formatted,
+                file_type=request.file_type.lower() 
             ),
             media_type="application/json"
         )
