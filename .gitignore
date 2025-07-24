@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+scripts/extract_ui_vol.py
+scripts/file_path
+
 # macOS system files
 .DS_Store
 

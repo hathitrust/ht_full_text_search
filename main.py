@@ -9,7 +9,7 @@ from pathlib import Path
 import re
 import time
 from typing import List
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from ht_full_text_search.ht_query.ht_query import HTSearchQuery
 from main_test import SOLR_OUTPUT_SAMPLE
 import uvicorn
@@ -18,8 +18,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from ht_full_text_search.config_search import FULL_TEXT_SOLR_URL, default_solr_params
 from ht_full_text_search.export_all_results import SolrExporter, make_query
 from ht_full_text_search.config_files import config_files_path
-
+from ht_full_text_search.utils.helpers import write_csv_and_get_path, build_fq_query
 from pydantic import BaseModel
+import yaml
 
 #Using for query endpoint
 class SearchRequest(BaseModel):
@@ -47,6 +48,9 @@ class AdvancedSearchRequest(BaseModel):
 
 
 exporter_api = {}
+CONFIG_DATA={}
+QUERY_CONFIG_PATH = Path(config_files_path, 'full_text_search/config_query.yaml')   
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -67,6 +71,11 @@ def main():
             solr_url = args.solr_url
         exporter_api['obj'] = SolrExporter(solr_url, args.env, user=os.getenv("SOLR_USER"),
                                                password=os.getenv("SOLR_PASSWORD"))
+        
+             
+        with open(QUERY_CONFIG_PATH, "r") as file:
+            CONFIG_DATA['data'] = yaml.safe_load(file)
+        print("Config loaded")
         yield
 
         # Add some logic here to close the connection
@@ -124,64 +133,30 @@ def main():
     async def advanced_search(request: AdvancedSearchRequest):
         """
         Advanced search using edismax query syntax with proper field and operator handling.
-        """        
-
-        query_config_file_path = Path(config_files_path, 'full_text_search/adv_config_query.yaml')
-        facet_config_file_path = Path(config_files_path, 'full_text_search/config_facet_filters.yaml')
-
+        """                
         if not request.criteria:
-            return {"error": "No search criteria provided"}
-
-        field_map = {
-            "Full Text & All Fields": "ocr",
-            "All Fields": "all",
-            "Title": "title",
-            "Author": "author",
-            "Subject": "subject"            
-        }
-        
-        fields, joined_query = HTSearchQuery.get_criteria_fields_query(request.criteria, request.field_operators, field_map)
-        
-        fq_joined = []
-        date_range_fq = HTSearchQuery.make_date_fq(request.start_year,request.end_year,request.in_year)
-        
-        if date_range_fq:
-            fq_joined.append(date_range_fq)
+            return {"error": "No search criteria provided"}        
+                
+        fields, joined_query = HTSearchQuery.get_criteria_fields_query(request.criteria, request.field_operators, CONFIG_DATA["data"])                
 
         filter_fields = {
+            "date":{"start_year":request.start_year,"end_year":request.end_year,"in_year":request.in_year},
             "language":request.languages,
             "format":request.formats,
             "location":request.location
         }        
-
-        for field,value in filter_fields.items():  
-            field_fq = ""
-            if value:              
-                field_fq = HTSearchQuery.make_listed_fq(field,value)            
-            if field_fq:
-                fq_joined.append(field_fq)
-                 
-
-        fq_formatted = " AND ".join(fq_joined)
-
-        
+        fq_formatted = build_fq_query(filter_fields, CONFIG_DATA["data"])
+                
         data = exporter_api['obj'].run_cursor(
                 joined_query,
-                query_config_path=query_config_file_path,
-                conf_query=fields,fq_formatted=fq_formatted,
-                file_type=request.file_type.lower() 
+                query_config_path=QUERY_CONFIG_PATH,
+                conf_query=fields,fq_formatted=fq_formatted            
             )     
+        if request.file_type.lower() == "csv":
+            meta = write_csv_and_get_path(data,out_dir="./csv_files")
+            return JSONResponse(meta)
         return StreamingResponse(data,media_type="application/json")
 
-        return StreamingResponse(
-            exporter_api['obj'].run_cursor(
-                joined_query,
-                query_config_path=query_config_file_path,
-                conf_query=fields,fq_formatted=fq_formatted,
-                file_type=request.file_type.lower() 
-            ),
-            media_type="application/json"
-        )
             
     @app.post("/search_results/")
     def solr_search_results():

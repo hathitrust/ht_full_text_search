@@ -190,93 +190,30 @@ class SolrExporter:
         # {!edismax mm='100%' tie='0.1' pf='topicProper^5 topic^1 fullgeographic^1 fullgenre^1 era^1' qf='topicProper^5 topic^1 fullgeographic^1 fullgenre^1 era^1'} Cultural AND Memory
         
         # print(params, end="\n")
-        if file_type == "csv":
-            timestamp = time.strftime("%Y%m%d_%H%M%S")
-            output_path = f"/Users/umkatta/Desktop/CSV/request_{timestamp}.csv"
-            yield self.export_ids_to_csv(params, output_path)
-        else:
-            while True:
-                results = self.send_query(params)  # send_query
-                # print("Printing result.content: ", results.content)            
-                output = json.loads(results.content)
-                # print("printing output", output, len(output))
-                print(len(output['response']['docs']))
-                for result in output['response']['docs']:
-                    yield process_results(result, list_output_fields)
-                if params["cursorMark"] != output["nextCursorMark"]:
-                    params["cursorMark"] = output["nextCursorMark"]
-                else:
-                    break
 
-    def export_ids_to_csv(self, params, output_path):
-        """
-        Export IDs directly to a CSV file for efficient processing
-
-        Args:
-            params: Solr query params
-            output_path: Path to save the CSV file
-        Returns:
-            file path and total records info
-        """
-        start_time = time.time()
+        #When we want to check by id's
+        # params["q"]= "id:coo\\.31924001840028 OR id:coo\\.31924074225651 OR id:coo1\\.ark\\:/13960/t04x5w53p OR id:coo1\\.ark\\:/13960/t3dz0tz2f OR id:coo1\\.ark\\:/13960/t3fx7ts39 OR id:hvd\\.hb08ny OR id:hvd\\.hb0x5l OR id:hvd\\.hn7v5x OR id:hvd\\.hntxc1 OR id:hvd\\.hw2gvl OR id:mdp\\.39015002663139 OR id:mdp\\.39015010834789 OR id:mdp\\.39015020465244 OR id:mdp\\.39015020815620 OR id:mdp\\.39015027611170 OR id:mdp\\.39015058499875 OR id:mdp\\.39015063039674 OR id:mdp\\.39015064508032 OR id:mdp\\.39015067877996 OR id:njp\\.32101069160594 OR id:uc1\\.\\$b236521 OR id:uc1\\.\\$b237942 OR id:uc1\\.\\$b237943 OR id:uc1\\.\\$b237988 OR id:uc1\\.\\$b238063 OR id:uc1\\.\\$b280885 OR id:uc1\\.\\$b281359 OR id:uc1\\.\\$b666025 OR id:uc1\\.32106016668516 OR id:uc1\\.b3854713 OR id:uc1\\.b3909054 OR id:uc2\\.ark\\:/13960/t9m33077j OR id:ucbk\\.ark\\:/28722/h26m33n41 OR id:ufl\\.31262051116977 OR id:uiug\\.30112064708677"
+        # "id:coo\\.31924001840028 OR id:coo\\.31924074225651 OR id:coo1\\.ark\\:/13960/t04x5w53p OR id:coo1\\.ark\\:/13960/t3dz0tz2f OR id:coo1\\.ark\\:/13960/t3fx7ts39 OR id:hvd\\.hb08ny OR id:hvd\\.hb0x5l OR id:hvd\\.hn7v5x OR id:hvd\\.hntxc1 OR id:hvd\\.hw2gvl OR id:mdp\\.39015002663139 OR id:mdp\\.39015010834789 OR id:mdp\\.39015020465244 OR id:mdp\\.39015020815620 OR id:mdp\\.39015027611170 OR id:mdp\\.39015058499875 OR id:mdp\\.39015063039674 OR id:mdp\\.39015064508032 OR id:mdp\\.39015067877996 OR id:njp\\.32101069160594 OR id:uc1\\.\\$b236521 OR id:uc1\\.\\$b237942 OR id:uc1\\.\\$b237943 OR id:uc1\\.\\$b237988 OR id:uc1\\.\\$b238063 OR id:uc1\\.\\$b280885 OR id:uc1\\.\\$b281359 OR id:uc1\\.\\$b666025 OR id:uc1\\.32106016668516 OR id:uc1\\.b3854713 OR id:uc1\\.b3909054 OR id:uc2\\.ark\\:/13960/t9m33077j OR id:ucbk\\.ark\\:/28722/h26m33n41 OR id:ufl\\.31262051116977 OR id:uiug\\.30112064708677"
+                        
         
-        # Make sure directory exists
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-
-        total_ids = 0
-        batch_size = 1000
-        ids_batch = []
-
         while True:            
-            results = self.send_query(params)
-            try:
-                data = json.loads(results.content)
-                # Process the batch - extract ONLY the ids regardless of what fields were returned
-                for doc in data['response']['docs']:
-                    if 'id' in doc:
-                        ids_batch.append([doc['id']])
-                        total_ids += 1
+            results = self.send_query(params)  # send_query
+            # print("Printing result.content: ", results.content)            
+            output = json.loads(results.content)
+            # print("printing output", output, len(output))
+            print(len(output['response']['docs']))
+            # import pdb;pdb.set_trace()
+            for result in output['response']['docs']:
+                response_data = process_results(result, list_output_fields)                                  
+                yield response_data                       
 
-                # Write batch when it reaches size threshold
-                if len(ids_batch) >= batch_size:
-                    with open(output_path, 'a', newline='') as csvfile:
-                        writer = csv.writer(csvfile)
-                        writer.writerows(ids_batch)
-                    print(f"Wrote batch of {len(ids_batch)} IDs, total: {total_ids}")
-                    ids_batch = []
+            if params["cursorMark"] != output["nextCursorMark"]:
+                params["cursorMark"] = output["nextCursorMark"]
+            else:
+                break
+               
 
-                # Check if we've reached the end
-                if params["cursorMark"] == data["nextCursorMark"]:
-                    break
-
-                # Update cursor for next batch
-                params["cursorMark"] = data["nextCursorMark"]
-
-            except json.JSONDecodeError as e:
-                print(f"Error decoding JSON: {e}")
-                print(f"Response content (first 200 chars): {results.content[:200]}")
-                # Try to continue with next batch if possible
-                if 'nextCursorMark' in params and params["cursorMark"] != params["nextCursorMark"]:
-                    params["cursorMark"] = params["nextCursorMark"]
-                else:
-                    break
-
-        # Write any remaining IDs
-        if ids_batch:
-            with open(output_path, 'a', newline='') as csvfile:
-                writer = csv.writer(csvfile)
-                writer.writerows(ids_batch)
-
-        total_time = time.time() - start_time
-        print(f"Wrote total records: {total_ids}")
-        resp= {
-            "status": "success",
-            "file_path": output_path,
-            "total_records": total_ids,
-            "processing_time_seconds": total_time
-        }
-        return json.dumps(resp)
-
+    
     @staticmethod
     def create_boost_phrase_fields(query_fields):
 

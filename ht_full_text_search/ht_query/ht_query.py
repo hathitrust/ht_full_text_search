@@ -2,6 +2,7 @@ import yaml
 
 from functools import reduce
 from typing import Text, List, Dict
+from ht_full_text_search.utils.helpers import build_joined_query
 
 
 class HTSearchQuery:
@@ -134,13 +135,15 @@ class HTSearchQuery:
             return query_string_dict
 
     @staticmethod
-    def get_criteria_fields_query(criterias, field_operators, field_map):
+    def get_criteria_fields_query(criterias, field_operators, config_data):
         # Process each criterion and collect all results
+
         query_fields = []
-        fields = []
+        fields = []        
+        field_search_map = config_data["field_search_map"]
 
         for criteria in criterias:
-            field = field_map.get(criteria.field, criteria.field)
+            field = field_search_map.get(criteria.field, criteria.field)
             fields.append(field)
             
             # Map match_type to operator
@@ -155,61 +158,12 @@ class HTSearchQuery:
             query_fields.append(formatted_query)
             # Get results for this criterion
 
-        joined_query = query_fields[0]
-        for i in range(1, len(query_fields)):
-            if i - 1 < len(field_operators):  # check if operator at i-1 exists
-                op = field_operators[i - 1]
-            else:   
-                op = "AND"
-            joined_query += f" {op} {query_fields[i]}"
+        joined_query = build_joined_query(query_fields, field_operators)
+        
         # query_fields = " OR ".join(query_fields)
         return fields, joined_query
 
 
-    @staticmethod
-    def make_date_fq(start_date, end_date, in_date):        
-        date_range_facet = 'publishDateRange'
-        date_trie_facet = 'publishDateTrie'
-
-        # if date_type == "both":
-        #     date_range_facet = 'bothPublishDateRange'
-        #     date_trie_facet = 'bothPublishDateTrie'
-
-        fq = ""
-
-        if in_date is not None and in_date.strip() != "":
-            # During year
-            facet = f'{date_range_facet}:"{in_date}"'                
-            fq = facet
-
-        elif (start_date is not None and start_date.strip() != "") or (end_date is not None and end_date.strip() != ""):
-            # in between / After / before dates
-            start_date = start_date if start_date and start_date.strip() != "" else "*"
-            end_date = end_date if end_date and end_date.strip() != "" else "*"
-            fq = f'{date_trie_facet}:[ {start_date} TO {end_date} ]'
-        else:
-            return ""        
-
-        return fq
-    
-    @staticmethod
-    def make_listed_fq(field,values:list|str):    
-        
-        facet_mapping = {
-                "language":"language008_full",
-                "format":"format",
-                "location": "htsource"
-            }            
-        facet = facet_mapping.get(field)
-        fq = ""
-        if isinstance(values,str):
-            return f'{facet}:"{values}"'
-        if facet and values:
-            facet_value = " OR ".join(values)
-            fq = f"{facet}:({facet_value})"        
-
-        return fq
-    
     @staticmethod
     def manage_string_query_solr6(input_phrase: Text, operator: Text = None, field:str=None) -> str| None:
         """
