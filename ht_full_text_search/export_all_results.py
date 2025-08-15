@@ -11,6 +11,10 @@ from requests.auth import HTTPBasicAuth
 from ht_full_text_search.config_files import config_files_path
 # Add the parent directory ~/ht_full_text_search into the PYTHONPATH.
 from ht_full_text_search.config_search import default_solr_params, FULL_TEXT_SOLR_URL
+from ht_full_text_search.utils.ht_logger import get_ht_logger
+
+logger = get_ht_logger(name=__name__)
+
 
 # This is a quick attempt to do a query to solr more or less as we issue it in
 # production and to then export all results using the cursorMark results
@@ -51,7 +55,7 @@ def process_results(item: dict, list_output_fields: list) -> str:
     Returns:
         str: JSON string of the processed result.
     """
-
+    # logger.info(f"process_results - params : {item} {list_output_fields}")
     result = {field: item.get(field, None) for field in list_output_fields}
     
     return json.dumps(result)
@@ -64,6 +68,7 @@ def solr_query_params(query_config_file=None, conf_query="ocr"):
     :param conf_query: str, query configuration name. Each query has a name to identify it.
     :return: str, formatted Solr query parameters
     """
+    logger.info(f"solr_query_params - params : {query_config_file} {conf_query}")
     if isinstance(conf_query,str):
         conf_query = [conf_query]
     params = {}
@@ -104,6 +109,7 @@ def make_query(query, query_config_file=None, conf_query="ocr"):
         :param query: str, query string
         :return: str, formatted Solr query string
     """
+    logger.info(f"make_query - params : {query} {query_config_file} {conf_query}")
     return f"{{!edismax {solr_query_params(query_config_file=query_config_file, conf_query=conf_query)}}} {query}"
 
 
@@ -133,7 +139,7 @@ class SolrExporter:
         :param params: dict, query parameters
         :return: response
         """
-
+        # logger.info(f"send_query - params : {params}")
         # Use stream=True to avoid loading all the data in memory at once (useful for large responses)
         # In chunked transfer, the data stream is divided into a series of non-overlapping "chunks".
 
@@ -168,8 +174,11 @@ class SolrExporter:
         :param query_string: Str, query string
         :return: generator
         """
+        logger.info(f"run_cursor - params : {query_string} {query_config_path} {conf_query} {list_output_fields} {fq_formatted} {file_type}")
 
         params = dict(default_solr_params(self.environment))
+        logger.info(f"default_solr_params - output : {params}")
+       
         # print(params,end="\n")
         # Replace the default list of fields with the one passed as a parameter
         if list_output_fields is not None:
@@ -181,6 +190,7 @@ class SolrExporter:
         params["debugQuery"] = "true"
         # print(params, end="\n")
         params["q"] = make_query(query_string, query_config_path, conf_query=conf_query)
+        logger.info(f'make_query - output : {params["q"]}')
         if fq_formatted:
             params["fq"] = fq_formatted
         print("print the query:1 ", params)

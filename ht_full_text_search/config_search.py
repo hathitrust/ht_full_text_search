@@ -1,6 +1,9 @@
 import inspect
 import os
 import sys
+from ht_full_text_search.utils.ht_logger import get_ht_logger
+
+logger = get_ht_logger(name=__name__)
 
 current_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 sys.path.insert(0, current_dir)
@@ -38,7 +41,7 @@ def default_solr_params(env: str = "prod"):
     :param env:
     :return:
     """
-
+    logger.info(f"default_solr_params - params : {env}")
     if env == "prod":
         add_shards(DEFAULT_SOLR_PARAMS)
     return DEFAULT_SOLR_PARAMS

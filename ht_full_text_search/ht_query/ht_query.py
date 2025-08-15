@@ -3,7 +3,9 @@ import yaml
 from functools import reduce
 from typing import Text, List, Dict
 from ht_full_text_search.utils.helpers import build_joined_query
+from ht_full_text_search.utils.ht_logger import get_ht_logger
 
+logger = get_ht_logger(name=__name__)
 
 class HTSearchQuery:
     def __init__(
@@ -137,7 +139,7 @@ class HTSearchQuery:
     @staticmethod
     def get_criteria_fields_query(criterias, field_operators, config_data):
         # Process each criterion and collect all results
-
+        logger.info(f"get_criteria_fields_query - params : {criterias},{field_operators},{config_data}")
         query_fields = []
         fields = []        
         field_search_map = config_data["field_search_map"]
@@ -159,7 +161,8 @@ class HTSearchQuery:
             # Get results for this criterion
 
         joined_query = build_joined_query(query_fields, field_operators)
-        
+        logger.info(f"build_joined_query - output : {joined_query}")
+
         # query_fields = " OR ".join(query_fields)
         return fields, joined_query
 
@@ -176,7 +179,8 @@ class HTSearchQuery:
         :param operator: It could be, all, exact_match or boolean_opperator
         :return:
         """
-
+        logger.info(f"manage_string_query_solr6 - params : {input_phrase},{operator},{field}")
+       
         # query_string_dict = {"q": HTSearchQuery.get_exact_phrase_query(input_phrase)}
         formatted_query = ""
         if operator == "OR" or operator == "AND":

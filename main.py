@@ -11,6 +11,7 @@ import time
 from typing import List
 from fastapi.responses import JSONResponse, StreamingResponse
 from ht_full_text_search.ht_query.ht_query import HTSearchQuery
+from ht_full_text_search.utils.ht_logger import get_ht_logger
 from main_test import SOLR_OUTPUT_SAMPLE
 import uvicorn
 from fastapi import FastAPI
@@ -21,6 +22,9 @@ from ht_full_text_search.config_files import config_files_path
 from ht_full_text_search.utils.helpers import write_csv_and_get_path, build_fq_query
 from pydantic import BaseModel
 import yaml
+import traceback
+
+logger = get_ht_logger(name=__name__)
 
 #Using for query endpoint
 class SearchRequest(BaseModel):
@@ -134,28 +138,36 @@ def main():
         """
         Advanced search using edismax query syntax with proper field and operator handling.
         """                
-        if not request.criteria:
-            return {"error": "No search criteria provided"}        
-                
-        fields, joined_query = HTSearchQuery.get_criteria_fields_query(request.criteria, request.field_operators, CONFIG_DATA["data"])                
+        try:
+            logger.info(f"AdvancedSearchRequest {request}")
+            if not request.criteria:
+                return {"error": "No search criteria provided"}        
+                    
+            fields, joined_query = HTSearchQuery.get_criteria_fields_query(request.criteria, request.field_operators, CONFIG_DATA["data"])                
+            logger.info(f"Framed fieds {fields}, joined_query : {joined_query} ")
+            filter_fields = {
+                "date":{"start_year":request.start_year,"end_year":request.end_year,"in_year":request.in_year},
+                "language":request.languages,
+                "format":request.formats,
+                "location":request.location
+            }        
+            fq_formatted = build_fq_query(filter_fields, CONFIG_DATA["data"])
+            logger.info(f"fq_formatted : {fq_formatted}")
 
-        filter_fields = {
-            "date":{"start_year":request.start_year,"end_year":request.end_year,"in_year":request.in_year},
-            "language":request.languages,
-            "format":request.formats,
-            "location":request.location
-        }        
-        fq_formatted = build_fq_query(filter_fields, CONFIG_DATA["data"])
-                
-        data = exporter_api['obj'].run_cursor(
-                joined_query,
-                query_config_path=QUERY_CONFIG_PATH,
-                conf_query=fields,fq_formatted=fq_formatted            
-            )     
-        if request.file_type.lower() == "csv":
-            meta = write_csv_and_get_path(data,out_dir="./csv_files")
-            return JSONResponse(meta)
-        return StreamingResponse(data,media_type="application/json")
+                    
+            data = exporter_api['obj'].run_cursor(
+                    joined_query,
+                    query_config_path=QUERY_CONFIG_PATH,
+                    conf_query=fields,fq_formatted=fq_formatted            
+                )     
+            if request.file_type.lower() == "csv":
+                meta = write_csv_and_get_path(data,out_dir="./csv_files")
+                return JSONResponse(meta)
+            return StreamingResponse(data,media_type="application/json")
+        
+        except Exception:
+            logger.error(f"Failed while fetching data : {traceback.print_exc()}")
+            return {"error": "Internal error occured while processing the request"}  
 
             
     @app.post("/search_results/")
