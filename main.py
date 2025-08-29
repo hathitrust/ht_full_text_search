@@ -49,11 +49,14 @@ class AdvancedSearchRequest(BaseModel):
     languages : list = []
     formats : list = []
     location : str = ""
+    index : str = "catalog"
 
 
 exporter_api = {}
 CONFIG_DATA={}
+CATALOG_CONFIG_DATA = {}
 QUERY_CONFIG_PATH = Path(config_files_path, 'full_text_search/config_query.yaml')   
+CATALOG_CONFIG_PATH = Path(config_files_path, 'catalog_search/config_query.yaml')   
 
 
 def main():
@@ -79,7 +82,11 @@ def main():
              
         with open(QUERY_CONFIG_PATH, "r") as file:
             CONFIG_DATA['data'] = yaml.safe_load(file)
+
+        with open(CATALOG_CONFIG_PATH, "r") as file:
+            CATALOG_CONFIG_DATA['data'] = yaml.safe_load(file)
         print("Config loaded")
+              
         yield
 
         # Add some logic here to close the connection
@@ -141,24 +148,33 @@ def main():
         try:
             logger.info(f"AdvancedSearchRequest {request}")
             if not request.criteria:
-                return {"error": "No search criteria provided"}        
-                    
-            fields, joined_query = HTSearchQuery.get_criteria_fields_query(request.criteria, request.field_operators, CONFIG_DATA["data"])                
-            logger.info(f"Framed fieds {fields}, joined_query : {joined_query} ")
-            filter_fields = {
-                "date":{"start_year":request.start_year,"end_year":request.end_year,"in_year":request.in_year},
-                "language":request.languages,
-                "format":request.formats,
-                "location":request.location
-            }        
-            fq_formatted = build_fq_query(filter_fields, CONFIG_DATA["data"])
-            logger.info(f"fq_formatted : {fq_formatted}")
+                return {"error": "No search criteria provided"}      
+            fq_formatted = ""
+            fields=[]
+            is_full_text = request.index == "full_text"
+            if not is_full_text:                        
+                joined_query = HTSearchQuery.standard_search_components([(cr.field,cr.query) for cr in request.criteria],request.field_operators,CATALOG_CONFIG_DATA['data'])                                
+
+                print(joined_query)
+
+
+            else:    
+                fields, joined_query = HTSearchQuery.get_criteria_fields_query(request.criteria, request.field_operators, CONFIG_DATA["data"])                
+                logger.info(f"Framed fieds {fields}, joined_query : {joined_query} ")
+                filter_fields = {
+                    "date":{"start_year":request.start_year,"end_year":request.end_year,"in_year":request.in_year},
+                    "language":request.languages,
+                    "format":request.formats,
+                    "location":request.location
+                }        
+                fq_formatted = build_fq_query(filter_fields, CONFIG_DATA["data"])
+                logger.info(f"fq_formatted : {fq_formatted}")
 
                     
             data = exporter_api['obj'].run_cursor(
-                    joined_query,
+                    joined_query,is_full_text,
                     query_config_path=QUERY_CONFIG_PATH,
-                    conf_query=fields,fq_formatted=fq_formatted            
+                    conf_query=fields,fq_formatted=fq_formatted         
                 )     
             if request.file_type.lower() == "csv":
                 meta = write_csv_and_get_path(data,out_dir="./csv_files")

@@ -4,6 +4,7 @@ from functools import reduce
 from typing import Text, List, Dict
 from ht_full_text_search.utils.helpers import build_joined_query
 from ht_full_text_search.utils.ht_logger import get_ht_logger
+import json,re
 
 logger = get_ht_logger(name=__name__)
 
@@ -114,6 +115,59 @@ class HTSearchQuery:
     @staticmethod
     def get_exact_phrase_query(q_string: Text) -> Text:
         return '"'.join(("", q_string, ""))
+    
+    @staticmethod
+    def build_and_or_onephrase(lookfor=None):
+        values = {}
+
+        if lookfor is None:
+            return False
+
+        # Remove illegal characters
+        illegal = ['.', '{', '}', '/', '!', ':', ';', '[', ']', '(', ')', '+ ', '&', '- ']
+        for ch in illegal:
+            lookfor = lookfor.replace(ch, '')
+
+        lookfor = lookfor.strip()
+
+        # Replace fancy quotes with normal "
+        lookfor = lookfor.replace('“', '"').replace('”', '"')
+
+        # If it looks like "..."*, pull out the quotes
+        match = re.match(r'^\s*"(.*)"\*\s*$', lookfor)
+        if match:
+            em = match.group(1)
+            lookfor = em + "*"            
+        
+        lookfor = HTSearchQuery.validateInput(lookfor)
+
+        if not re.search(r'\S', lookfor):  # If no non-space char
+            return False
+
+        # Tokenize Input
+        tokenized = HTSearchQuery.tokenizeInput(lookfor)
+
+        values['onephrase'] = '"' + " ".join(tokenized).replace('"', '') + '"'
+        values['and'] = " AND ".join(tokenized)
+        values['or'] = " OR ".join(tokenized)
+        values['asis'] = lookfor
+        values['compressed'] = re.sub(r'\s+', '', lookfor)
+        values['exactmatcher'] = HTSearchQuery.exactmatcherify(lookfor)
+        values['emstartswith'] = values['exactmatcher'] + "*"
+        
+        return values
+
+    @staticmethod
+    def validateInput(text):        
+        return text.strip()
+
+    @staticmethod
+    def tokenizeInput(text):
+        return text.split()
+
+    @staticmethod
+    def exactmatcherify(text):        
+        return text.lower().strip()
 
     @staticmethod
     def manage_string_query(input_phrase: Text, operator: Text = None) -> Dict:
@@ -166,6 +220,101 @@ class HTSearchQuery:
         # query_fields = " OR ".join(query_fields)
         return fields, joined_query
 
+    @staticmethod
+    def standard_search_components(search, field_operators, config_data):
+        searchComponents = {}
+        queries_lst=[]     
+
+        query = ""
+
+        # Iterating over search config fields        
+        for tvb in search:                       
+            type_ = tvb[0]            
+
+            values = HTSearchQuery.build_and_or_onephrase(tvb[1])                        
+
+            if type_ in config_data and values:
+                comp = "(" + HTSearchQuery.build_query_string(config_data[type_], values) + ")"
+                queries_lst.append(comp)                                        
+
+        joined_query = build_joined_query(queries_lst,field_operators)
+
+        if re.search(r"\S", joined_query): 
+            searchComponents["q"] = joined_query
+        else:
+            searchComponents["q"] = "*:*"            
+
+        return searchComponents
+
+    def build_query_string(structure, values, joiner="OR"):
+        clauses = []
+
+        for field, clausearray in structure.items():
+            
+            if isinstance(field, int) or str(field).isdigit():
+                # First item gives operator + weight
+                opweight = clausearray.pop(0)
+                op = opweight[0]
+                weight = opweight[1]
+
+                sstring = "(" + HTSearchQuery.build_query_string({i: v for i, v in enumerate(clausearray)}, values, op) + ")"
+
+                if weight and weight > 0:
+                    sstring += f"^{weight}"
+
+                clauses.append(sstring)
+                continue
+
+            # Case 2: Normal field: clausearray is list of [val, weight]
+            for valweight in clausearray:
+                val = valweight[0]
+                weight = valweight[1]
+
+                # Ensure value exists
+                if val not in values:
+                    if val == "lcnormalized":                        
+                        normalized = HTSearchQuery.LCCallNumberNormalizer(values.get("asis", ""), False)
+                        if normalized:
+                            values[val] = normalized
+                        else:
+                            continue
+
+                    if val == "stdnum":
+                        match = re.match(r'^\s*0*([\d\-\.]+[xX]?).*$', values.get("asis", ""))
+                        if match:
+                            stdnum = match.group(1)
+                            # stdnum = re.sub(r'[\.\-]', '', stdnum)  # original code commented
+                            stdnum = HTSearchQuery.Normalize_stdnum(stdnum)
+                            values[val] = stdnum
+
+                if val not in values or values[val] == "":
+                    continue
+
+                # Build field clause
+                sstring = f"{field}:({values[val]})"
+                if weight and weight > 0:
+                    sstring += f"^{weight}"
+
+                clauses.append(sstring)
+
+        newq = f" {joiner} ".join(clauses)
+        return newq
+
+    # -----------------------
+    # Stub helpers for PHP equivalents
+    # -----------------------
+
+    @staticmethod
+    def LCCallNumberNormalizer(text, strict=False):
+        # TODO: implement call number normalization logic
+        # For now, just return text unchanged
+        return text.strip() if text else None
+
+    @staticmethod
+    def Normalize_stdnum(stdnum):
+        # TODO: implement actual stdnum normalization logic
+        # For now, strip spaces, uppercase X
+        return stdnum.replace(" ", "").upper()
 
     @staticmethod
     def manage_string_query_solr6(input_phrase: Text, operator: Text = None, field:str=None) -> str| None:

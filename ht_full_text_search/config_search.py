@@ -33,7 +33,7 @@ DEFAULT_SOLR_PARAMS = {
 }
 
 
-def default_solr_params(env: str = "prod"):
+def default_solr_params(env: str = "prod",is_full_text: bool = True):
     # TODO: Add shards is only for prod environment and full-text search, then I have to change this function to
     # ensure we have access to Catalog in prod environment.
     """
@@ -42,7 +42,7 @@ def default_solr_params(env: str = "prod"):
     :return:
     """
     logger.info(f"default_solr_params - params : {env}")
-    if env == "prod":
+    if env == "prod" and is_full_text:
         add_shards(DEFAULT_SOLR_PARAMS)
     return DEFAULT_SOLR_PARAMS
 
