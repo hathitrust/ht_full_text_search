@@ -383,3 +383,17 @@ all:
   - [and, 10]
 #  - [or, ~]
 
+field_facet_mapping:
+  "language": language008_full
+  "format": format
+  "location": htsource
+  "date_range_facet": publishDateRange
+  "date_trie_facet": publishDateTrie
+  "ht_availability": ht_availability
+
+field_search_map:
+  "all fields": all
+  "title": title
+  "author": author
+  "subject": subject
+

@@ -145,15 +145,15 @@ class SolrExporter:
         # logger.info(f"send_query - params : {params}")
         # Use stream=True to avoid loading all the data in memory at once (useful for large responses)
         # In chunked transfer, the data stream is divided into a series of non-overlapping "chunks".
-        # import pdb;pdb.set_trace()
-        # catalog = http://localhost:9033/solr/catalog/query
-        
+                  
         if is_full_text:
             response = requests.post(
                 url=self.solr_url, params=params, headers=self.headers, stream=True,
                 auth=self.auth
             )
-        else:
+        else:            
+
+            # response = requests.post(url="https://analytics.dev.htrc.indiana.edu/catalog/catalog/query", params=params, headers=self.headers, stream=True,auth=self.auth)
             response = requests.post("http://localhost:9033/solr/catalog/select",data=params)
 
         return response
@@ -196,12 +196,12 @@ class SolrExporter:
         params["cursorMark"] = "*"
         # TODO: Implement the feature to access to Solr debug using this python script
         params["debugQuery"] = "true"
-        # print(params, end="\n")
+        # print(params, end="\n")        
         if is_full_text:
             params["q"] = make_query(query_string, query_config_path, conf_query=conf_query)
         else:
-            # params["query"] = query_string
-            params = query_string
+            # params["q"] = query_string["q"]
+            params.update(query_string)
         # params["q"]='(title_ab:(political drama)^25000 OR title_a:(political drama)^15000 OR titleProper:(political drama*)^8000 OR titleProper:("political drama")^1200 OR titleProper:(political AND drama)^120 OR title_topProper:("political drama")^600 OR title_topProper:(political AND drama)^60 OR title_restProper:("political drama")^400 OR title_restProper:(political AND drama)^40 OR series:("political drama")^500 OR series:(political AND drama)^50 OR series2:("political drama")^500 OR series2:(political AND drama)^50 OR title:(political AND drama)^30 OR title_top:(political AND drama)^20 OR title_rest:(political AND drama)^1)'
         # params["fq"]='ht_availability:"Full text"'
 

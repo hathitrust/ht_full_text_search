@@ -20,7 +20,7 @@ from ht_full_text_search.config_search import FULL_TEXT_SOLR_URL, default_solr_p
 from ht_full_text_search.export_all_results import SolrExporter, make_query
 from ht_full_text_search.config_files import config_files_path
 from ht_full_text_search.utils.helpers import write_csv_and_get_path, build_fq_query
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 import yaml
 import traceback
 
@@ -38,6 +38,10 @@ class SearchCriteria(BaseModel):
     query: str  # Search term
     match_type: str="all of these words"  # "all of these words", "any of these words", "this exact phrase"
 
+    @field_validator("field", "match_type", mode="before")
+    def lowercase_fields(cls, v):
+        return v.lower() if isinstance(v, str) else v
+
 #Using for Advance search endpoint
 class AdvancedSearchRequest(BaseModel):
     criteria: List[SearchCriteria]
@@ -49,7 +53,12 @@ class AdvancedSearchRequest(BaseModel):
     languages : list = []
     formats : list = []
     location : str = ""
-    index : str = "catalog"
+    index : str = "full text"
+    item_viewability : str = "all items"
+
+    @field_validator("file_type", "index", "item_viewability", mode="before")
+    def lowercase_fields(cls, v):
+        return v.lower() if isinstance(v, str) else v
 
 
 exporter_api = {}
@@ -151,22 +160,34 @@ def main():
                 return {"error": "No search criteria provided"}      
             fq_formatted = ""
             fields=[]
-            is_full_text = request.index == "full_text"
-            if not is_full_text:                        
-                joined_query = HTSearchQuery.standard_search_components([(cr.field,cr.query) for cr in request.criteria],request.field_operators,CATALOG_CONFIG_DATA['data'])                                
-
-                print(joined_query)
-
-
-            else:    
-                fields, joined_query = HTSearchQuery.get_criteria_fields_query(request.criteria, request.field_operators, CONFIG_DATA["data"])                
-                logger.info(f"Framed fieds {fields}, joined_query : {joined_query} ")
-                filter_fields = {
+            is_full_text = request.index.lower() == "full text"
+            is_all_items = request.item_viewability.lower() == "all items"
+            filter_fields = {
                     "date":{"start_year":request.start_year,"end_year":request.end_year,"in_year":request.in_year},
                     "language":request.languages,
                     "format":request.formats,
                     "location":request.location
-                }        
+                } 
+            print("Full text ", is_full_text)
+            if not is_full_text:
+                if not is_all_items:
+                    filter_fields.update(
+                        {
+                            "ht_availability":"Full text",
+                        }
+                    )                  
+                
+                search_fields = [(CATALOG_CONFIG_DATA["data"]["field_search_map"].get(cr.field,cr.field),HTSearchQuery.preprocess_search(cr.query,cr.match_type)) for cr in request.criteria]
+                print("search_fields : ", search_fields)
+                joined_query = HTSearchQuery.standard_search_components(search_fields,request.field_operators,CATALOG_CONFIG_DATA['data'])                                                                                
+                joined_query['fq'] = build_fq_query(filter_fields, CATALOG_CONFIG_DATA["data"])
+                print(joined_query)
+
+
+            else: 
+                fields, joined_query = HTSearchQuery.get_criteria_fields_query(request.criteria, request.field_operators, CONFIG_DATA["data"])                
+                logger.info(f"Framed fieds {fields}, joined_query : {joined_query} ")
+                       
                 fq_formatted = build_fq_query(filter_fields, CONFIG_DATA["data"])
                 logger.info(f"fq_formatted : {fq_formatted}")
 

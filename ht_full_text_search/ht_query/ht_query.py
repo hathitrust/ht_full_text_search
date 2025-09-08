@@ -145,7 +145,8 @@ class HTSearchQuery:
             return False
 
         # Tokenize Input
-        tokenized = HTSearchQuery.tokenizeInput(lookfor)
+        tokenized = HTSearchQuery.tokenize_input(lookfor)
+        print("$tokenized : ",tokenized)
 
         values['onephrase'] = '"' + " ".join(tokenized).replace('"', '') + '"'
         values['and'] = " AND ".join(tokenized)
@@ -154,7 +155,7 @@ class HTSearchQuery:
         values['compressed'] = re.sub(r'\s+', '', lookfor)
         values['exactmatcher'] = HTSearchQuery.exactmatcherify(lookfor)
         values['emstartswith'] = values['exactmatcher'] + "*"
-        
+        print("build_and_or_onephrase values : ", values)
         return values
 
     @staticmethod
@@ -162,12 +163,44 @@ class HTSearchQuery:
         return text.strip()
 
     @staticmethod
-    def tokenizeInput(text):
-        return text.split()
+    def tokenize_input(text: str):
+        import html
+        if text is None:
+            return []
+
+        # 1) Unescape HTML entities (e.g., &quot;)
+        text = html.unescape(text)
+
+        # 2) Normalize smart quotes to straight quotes (keeps phrases intact downstream)
+        text = text.replace('“', '"').replace('”', '"')
+
+        # 3) Find tokens: quoted phrases are a single token
+        TOKEN_RX = re.compile(r'"[^"]*"(?:~\d+)?|“[^”]*”(?:~\d+)?|"(?:[^"]*)"|“[^”]*”|\S+')
+        words = re.findall(TOKEN_RX, text)
+
+        # 4) Glue boolean operators to the previous token (match your PHP loop)
+        new_words = []
+        i = 0
+        while i < len(words):
+            w = words[i]
+            if w in ("OR", "AND", "NOT"):
+                if new_words and i + 1 < len(words):
+                    new_words[-1] += f" {w} {words[i+1]}"
+                    i += 2
+                    continue
+            else:
+                new_words.append(w)
+            i += 1
+
+        # 5) Return non-empty tokens
+        return [w for w in new_words if re.search(r"\S", w)]
 
     @staticmethod
-    def exactmatcherify(text):        
-        return text.lower().strip()
+    def exactmatcherify(s: str) -> str:        
+        s = s.lower()        
+        s = s.strip()        
+        s = re.sub(r"[^\w\*\?]", "", s, flags=re.UNICODE)
+        return s
 
     @staticmethod
     def manage_string_query(input_phrase: Text, operator: Text = None) -> Dict:
@@ -220,8 +253,20 @@ class HTSearchQuery:
         # query_fields = " OR ".join(query_fields)
         return fields, joined_query
 
+    
     @staticmethod
-    def standard_search_components(search, field_operators, config_data):
+    def preprocess_search(text, type): 
+        if type == "this exact phrase":
+            return f'"{text}"'
+        elif type == "any of these words":
+            words = text.split()
+            if len(words) < 2:
+                return text  # No change needed if only one word
+            return f"{words[0]} OR {' '.join(words[1:])}"
+        return text # returns search text from user for ALL of these words case
+
+    @staticmethod
+    def standard_search_components(search, field_operators, config_data):        
         searchComponents = {}
         queries_lst=[]     
 
