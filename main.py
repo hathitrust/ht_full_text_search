@@ -16,8 +16,9 @@ from main_test import SOLR_OUTPUT_SAMPLE
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from ht_full_text_search.config_search import FULL_TEXT_SOLR_URL, default_solr_params
+from ht_full_text_search.config_search import FULL_TEXT_SOLR_URL, CATALOG_SOLR_URL, default_solr_params
 from ht_full_text_search.export_all_results import SolrExporter, make_query
+from ht_full_text_search.catalog_export_all_results import CatalogSolrExporter
 from ht_full_text_search.config_files import config_files_path
 from ht_full_text_search.utils.helpers import write_csv_and_get_path, build_fq_query
 from pydantic import BaseModel, field_validator
@@ -52,19 +53,19 @@ class AdvancedSearchRequest(BaseModel):
     in_year: str = ""
     languages : list = []
     formats : list = []
-    location : str = ""
-    index : str = "full text"
+    location : str = ""    
     item_viewability : str = "all items"
 
-    @field_validator("file_type", "index", "item_viewability", mode="before")
+    @field_validator("file_type", "item_viewability", mode="before")
     def lowercase_fields(cls, v):
         return v.lower() if isinstance(v, str) else v
 
 
 exporter_api = {}
+catalog_exporter_api = {}
 CONFIG_DATA={}
 CATALOG_CONFIG_DATA = {}
-QUERY_CONFIG_PATH = Path(config_files_path, 'full_text_search/config_query.yaml')   
+FT_QUERY_CONFIG_PATH = Path(config_files_path, 'full_text_search/config_query.yaml')   
 CATALOG_CONFIG_PATH = Path(config_files_path, 'catalog_search/config_query.yaml')   
 
 
@@ -72,6 +73,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--env", default=os.environ.get("HT_ENVIRONMENT", "dev"))
     parser.add_argument("--solr_url", help="Solr url", default=None)
+    parser.add_argument("--catalog_solr_url", help="Catalog Solr url", default=None)
 
     args = parser.parse_args()
 
@@ -82,14 +84,20 @@ def main():
         """
         print("Connecting with Solr server")
 
-        solr_url = FULL_TEXT_SOLR_URL[args.env]
+        ft_solr_url = FULL_TEXT_SOLR_URL[args.env]
         if args.solr_url:
-            solr_url = args.solr_url
-        exporter_api['obj'] = SolrExporter(solr_url, args.env, user=os.getenv("SOLR_USER"),
+            ft_solr_url = args.solr_url
+
+        catalog_solr_url = CATALOG_SOLR_URL[args.env]
+        if args.catalog_solr_url:
+            catalog_solr_url = args.catalog_solr_url    
+            
+        exporter_api['obj'] = SolrExporter(ft_solr_url, args.env, user=os.getenv("SOLR_USER"),
                                                password=os.getenv("SOLR_PASSWORD"))
         
-             
-        with open(QUERY_CONFIG_PATH, "r") as file:
+        catalog_exporter_api['obj'] = CatalogSolrExporter(catalog_solr_url, args.env)
+                     
+        with open(FT_QUERY_CONFIG_PATH, "r") as file:
             CONFIG_DATA['data'] = yaml.safe_load(file)
 
         with open(CATALOG_CONFIG_PATH, "r") as file:
@@ -159,42 +167,25 @@ def main():
             if not request.criteria:
                 return {"error": "No search criteria provided"}      
             fq_formatted = ""
-            fields=[]
-            is_full_text = request.index.lower() == "full text"
-            is_all_items = request.item_viewability.lower() == "all items"
+            fields=[]            
             filter_fields = {
                     "date":{"start_year":request.start_year,"end_year":request.end_year,"in_year":request.in_year},
                     "language":request.languages,
                     "format":request.formats,
                     "location":request.location
                 } 
-            print("Full text ", is_full_text)
-            if not is_full_text:
-                if not is_all_items:
-                    filter_fields.update(
-                        {
-                            "ht_availability":"Full text",
-                        }
-                    )                  
-                
-                search_fields = [(CATALOG_CONFIG_DATA["data"]["field_search_map"].get(cr.field,cr.field),HTSearchQuery.preprocess_search(cr.query,cr.match_type)) for cr in request.criteria]
-                print("search_fields : ", search_fields)
-                joined_query = HTSearchQuery.standard_search_components(search_fields,request.field_operators,CATALOG_CONFIG_DATA['data'])                                                                                
-                joined_query['fq'] = build_fq_query(filter_fields, CATALOG_CONFIG_DATA["data"])
-                print(joined_query)
 
-
-            else: 
-                fields, joined_query = HTSearchQuery.get_criteria_fields_query(request.criteria, request.field_operators, CONFIG_DATA["data"])                
-                logger.info(f"Framed fieds {fields}, joined_query : {joined_query} ")
-                       
-                fq_formatted = build_fq_query(filter_fields, CONFIG_DATA["data"])
-                logger.info(f"fq_formatted : {fq_formatted}")
+            
+            fields, joined_query = HTSearchQuery.get_criteria_fields_query(request.criteria, request.field_operators, CONFIG_DATA["data"])                
+            logger.info(f"Framed fieds {fields}, joined_query : {joined_query} ")
+                    
+            fq_formatted = build_fq_query(filter_fields, CONFIG_DATA["data"])
+            logger.info(f"fq_formatted : {fq_formatted}")
 
                     
             data = exporter_api['obj'].run_cursor(
-                    joined_query,is_full_text,
-                    query_config_path=QUERY_CONFIG_PATH,
+                    joined_query,
+                    query_config_path=FT_QUERY_CONFIG_PATH,
                     conf_query=fields,fq_formatted=fq_formatted         
                 )     
             if request.file_type.lower() == "csv":
@@ -202,6 +193,51 @@ def main():
                 return JSONResponse(meta)
             return StreamingResponse(data,media_type="application/json")
         
+        except Exception:
+            logger.error(f"Failed while fetching data : {traceback.print_exc()}")
+            return {"error": "Internal error occured while processing the request"}  
+        
+    @app.post("/catalog/search/")
+    async def catalog_advanced_search(request: AdvancedSearchRequest):
+        """
+        Advanced search using edismax query syntax with proper field and operator handling.
+        """                
+        try:
+            logger.info(f"catalog advanced search {request}")
+            if not request.criteria:
+                return {"error": "No search criteria provided"}      
+            fq_formatted = ""
+            fields=[]            
+            is_all_items = request.item_viewability.lower() == "all items"
+            filter_fields = {
+                    "date":{"start_year":request.start_year,"end_year":request.end_year,"in_year":request.in_year},
+                    "language":request.languages,
+                    "format":request.formats,
+                    "location":request.location
+                }             
+            
+            if not is_all_items:
+                filter_fields.update( 
+                    {
+                        "ht_availability":"Full text",
+                    }
+                )                  
+            
+            search_fields = [(CATALOG_CONFIG_DATA["data"]["field_search_map"].get(cr.field,cr.field),HTSearchQuery.preprocess_search(cr.query,cr.match_type)) for cr in request.criteria]
+            print("search_fields : ", search_fields)
+            joined_query = HTSearchQuery.standard_search_components(search_fields,request.field_operators,CATALOG_CONFIG_DATA['data'])                                                                                
+            joined_query['fq'] = build_fq_query(filter_fields, CATALOG_CONFIG_DATA["data"])
+            print(joined_query)
+
+                
+            data = catalog_exporter_api['obj'].run_cursor(
+                    joined_query,                    
+                    conf_query=fields,fq_formatted=fq_formatted         
+                )     
+            if request.file_type.lower() == "csv":
+                meta = write_csv_and_get_path(data,out_dir="./csv_files")
+                return JSONResponse(meta)
+            return StreamingResponse(data,media_type="application/json")
         except Exception:
             logger.error(f"Failed while fetching data : {traceback.print_exc()}")
             return {"error": "Internal error occured while processing the request"}  
@@ -221,3 +257,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

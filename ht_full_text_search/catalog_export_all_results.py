@@ -10,7 +10,7 @@ from requests.auth import HTTPBasicAuth
 
 from ht_full_text_search.config_files import config_files_path
 # Add the parent directory ~/ht_full_text_search into the PYTHONPATH.
-from ht_full_text_search.config_search import default_solr_params, FULL_TEXT_SOLR_URL
+from ht_full_text_search.config_search import default_catalog_solr_params, FULL_TEXT_SOLR_URL
 from ht_full_text_search.utils.ht_logger import get_ht_logger
 
 logger = get_ht_logger(name=__name__)
@@ -61,66 +61,15 @@ def process_results(item: dict, list_output_fields: list) -> str:
     return json.dumps(result)
 
 
-def solr_query_params(query_config_file=None, conf_query="ocr"):
-
-    """ Prepare the Solr query parameters
-    :param query_config_file: str, path to the config file with the queries
-    :param conf_query: str, query configuration name. Each query has a name to identify it.
-    :return: str, formatted Solr query parameters
-    """
-    logger.info(f"solr_query_params - params : {query_config_file} {conf_query}")
-    if isinstance(conf_query,str):
-        conf_query = [conf_query]
-    params = {}
-    mm = []
-    tie = []
-    pf = []
-    qf = []
-    for query in conf_query:
-        with open(query_config_file, "r") as file:
-            data = yaml.safe_load(file)[query]
-
-            mm.append(data["mm"])
-            tie.append(data["tie"])
-            
-
-            if "pf" in data:
-                pf.append(SolrExporter.create_boost_phrase_fields(data["pf"]))
-            if "qf" in data:
-                qf.append(SolrExporter.create_boost_phrase_fields(data["qf"]))
-
-    # import pdb;pdb.set_trace()
-
-    params = {
-        "mm" : mm[0],
-        "tie" : tie[0],
-        "pf": " ".join(pf),
-        "qf": " ".join(qf),
-    }
-
-    return " ".join([f"{k}='{v}'" for k, v in params.items()])
-
-
-def make_query(query, query_config_file=None, conf_query="ocr"):
-
-    """ Prepare the Solr query string
-        :param conf_query:
-        :param query_config_file:
-        :param query: str, query string
-        :return: str, formatted Solr query string
-    """
-    logger.info(f"make_query - params : {query} {query_config_file} {conf_query}")
-    return f"{{!edismax {solr_query_params(query_config_file=query_config_file, conf_query=conf_query)}}} {query}"
 
 
 
+class CatalogSolrExporter:
 
-class SolrExporter:
-
-    def __init__(self, ft_solr_url: str, env: str, user=None, password=None):
+    def __init__(self, catalog_solr_url:str, env: str, user=None, password=None):
 
         """ Initialize the SolrExporter class
-        :param solr_url: str, Solr URL
+        :param catalog_solr_url: str, Solr URL
         :param env: str, environment. It could be dev or prod
         """
 
@@ -131,7 +80,7 @@ class SolrExporter:
         # url = http://solr-sdr-catalog:9033/solr
         # full_url =  http://solr-sdr-catalog:9033/solr/catalog/
 
-        self.ft_solr_url = f"{ft_solr_url}/query"        
+        self.catalog_solr_url = f"{catalog_solr_url}/query"
         self.environment = env
         self.headers = {"Content-Type": "application/json"}
         self.auth = HTTPBasicAuth(user, password) if user and password else None
@@ -144,42 +93,21 @@ class SolrExporter:
         """
         # logger.info(f"send_query - params : {params}")
         # Use stream=True to avoid loading all the data in memory at once (useful for large responses)
-        # In chunked transfer, the data stream is divided into a series of non-overlapping "chunks".
-                          
-        response = requests.post(
-                url=self.ft_solr_url, params=params, headers=self.headers, stream=True,
-                auth=self.auth
-            )        
-
+        # In chunked transfer, the data stream is divided into a series of non-overlapping "chunks".                                 
+        response = requests.post(self.catalog_solr_url,data=params)
+        # response = requests.post("http://localhost:9033/solr/catalog/select",data=params)
+        print("response : ", response)
         return response
 
-    def run_cursor(self, query_string, query_config_path=None, conf_query="ocr", list_output_fields: list = None,fq_formatted=None,file_type=""):
+    def run_cursor(self, query_string, conf_query="ocr", list_output_fields: list = None,fq_formatted=None,file_type=""):
 
         # TODO: This function will receive the query string and the query type (ocr or all). From memory, it will
         # instantiate the query parameters (params["q"]) and run the query.
         # See below how the params dictionary is created. As the fields about the query are already in memory, we should
-        # update the field q in the params dictionary with the query string and run the query.
+        # update the field q in the params dictionary with the query string and run the query.        
+        logger.info(f"run_cursor - params : {query_string} {conf_query} {list_output_fields} {fq_formatted} {file_type}")
 
-        """ Run the cursor to export all results
-
-        params = {'cursorMark': '*',
-        'debugQuery': 'true',
-        'fl': 'title,author,id,shard,score',
-        'q': "{!edismax mm='100%' tie='0.9' qf='title^500000'} health",
-        'rows': 500,
-        'sort': 'id asc',
-        'wt': 'json'}
-
-        The cursorMark parameter is used to keep track of the current position in the result set.
-        :param list_output_fields:
-        :param conf_query:
-        :param query_config_path:
-        :param query_string: Str, query string
-        :return: generator
-        """
-        logger.info(f"run_cursor - params : {query_string} {query_config_path} {conf_query} {list_output_fields} {fq_formatted} {file_type}")
-
-        params = dict(default_solr_params(self.environment))
+        params = dict(default_catalog_solr_params(self.environment))
         logger.info(f"default_solr_params - output : {params}")
        
         # print(params,end="\n")
@@ -188,9 +116,12 @@ class SolrExporter:
             params["fl"] = ",".join(list_output_fields)
         else:
             list_output_fields = params["fl"].split(",")
-        params["cursorMark"] = "*"        
-        params["debugQuery"] = "true"                
-        params["q"] = make_query(query_string, query_config_path, conf_query=conf_query)        
+        params["cursorMark"] = "*"
+        # TODO: Implement the feature to access to Solr debug using this python script
+        params["debugQuery"] = "true"
+        # print(params, end="\n")        
+                 
+        params.update(query_string)
         
         # params["q"]='(title_ab:(political drama)^25000 OR title_a:(political drama)^15000 OR titleProper:(political drama*)^8000 OR titleProper:("political drama")^1200 OR titleProper:(political AND drama)^120 OR title_topProper:("political drama")^600 OR title_topProper:(political AND drama)^60 OR title_restProper:("political drama")^400 OR title_restProper:(political AND drama)^40 OR series:("political drama")^500 OR series:(political AND drama)^50 OR series2:("political drama")^500 OR series2:(political AND drama)^50 OR title:(political AND drama)^30 OR title_top:(political AND drama)^20 OR title_rest:(political AND drama)^1)'
         # params["fq"]='ht_availability:"Full text"'
@@ -219,15 +150,11 @@ class SolrExporter:
         # : Special characters like '.' and ':' must be escaped using '\\' to avoid Solr syntax errors.
         # params["q"]= "id:coo\\.31924001840028 OR id:coo\\.31924074225651 OR id:coo1\\.ark\\:/13960/t04x5w53p OR id:coo1\\.ark\\:/13960/t3dz0tz2f OR id:coo1\\.ark\\:/13960/t3fx7ts39 OR id:hvd\\.hb08ny OR id:hvd\\.hb0x5l OR id:hvd\\.hn7v5x OR id:hvd\\.hntxc1 OR id:hvd\\.hw2gvl OR id:mdp\\.39015002663139 OR id:mdp\\.39015010834789 OR id:mdp\\.39015020465244 OR id:mdp\\.39015020815620 OR id:mdp\\.39015027611170 OR id:mdp\\.39015058499875 OR id:mdp\\.39015063039674 OR id:mdp\\.39015064508032 OR id:mdp\\.39015067877996 OR id:njp\\.32101069160594 OR id:uc1\\.\\$b236521 OR id:uc1\\.\\$b237942 OR id:uc1\\.\\$b237943 OR id:uc1\\.\\$b237988 OR id:uc1\\.\\$b238063 OR id:uc1\\.\\$b280885 OR id:uc1\\.\\$b281359 OR id:uc1\\.\\$b666025 OR id:uc1\\.32106016668516 OR id:uc1\\.b3854713 OR id:uc1\\.b3909054 OR id:uc2\\.ark\\:/13960/t9m33077j OR id:ucbk\\.ark\\:/28722/h26m33n41 OR id:ufl\\.31262051116977 OR id:uiug\\.30112064708677"
         # "id:coo\\.31924001840028 OR id:coo\\.31924074225651 OR id:coo1\\.ark\\:/13960/t04x5w53p OR id:coo1\\.ark\\:/13960/t3dz0tz2f OR id:coo1\\.ark\\:/13960/t3fx7ts39 OR id:hvd\\.hb08ny OR id:hvd\\.hb0x5l OR id:hvd\\.hn7v5x OR id:hvd\\.hntxc1 OR id:hvd\\.hw2gvl OR id:mdp\\.39015002663139 OR id:mdp\\.39015010834789 OR id:mdp\\.39015020465244 OR id:mdp\\.39015020815620 OR id:mdp\\.39015027611170 OR id:mdp\\.39015058499875 OR id:mdp\\.39015063039674 OR id:mdp\\.39015064508032 OR id:mdp\\.39015067877996 OR id:njp\\.32101069160594 OR id:uc1\\.\\$b236521 OR id:uc1\\.\\$b237942 OR id:uc1\\.\\$b237943 OR id:uc1\\.\\$b237988 OR id:uc1\\.\\$b238063 OR id:uc1\\.\\$b280885 OR id:uc1\\.\\$b281359 OR id:uc1\\.\\$b666025 OR id:uc1\\.32106016668516 OR id:uc1\\.b3854713 OR id:uc1\\.b3909054 OR id:uc2\\.ark\\:/13960/t9m33077j OR id:ucbk\\.ark\\:/28722/h26m33n41 OR id:ufl\\.31262051116977 OR id:uiug\\.30112064708677"
-        # params["q"] = "id:coo\\.31924071651545"                
         
         while True:            
-            results = self.send_query(params)  # send_query            
-            # print("Printing result.content: ", results.content)            
+            results = self.send_query(params)  # send_query                  
             output = json.loads(results.content)
-            # print("printing output", output, len(output))
             print(len(output['response']['docs']))
-            # import pdb;pdb.set_trace()
             for result in output['response']['docs']:
                 response_data = process_results(result, list_output_fields)                                  
                 yield response_data                       
@@ -238,54 +165,3 @@ class SolrExporter:
                 break
 
                
-
-    
-    @staticmethod
-    def create_boost_phrase_fields(query_fields):
-
-        """ Create the boost phrase fields
-        :param query_fields: list, list of field
-        :return: str, formatted boost phrase fields
-        """
-
-        # phrase fields ==> Once the list of matching documents has been identified using the fq and qf parameters,
-        # the pf parameter can be used to "boost" the score of documents in cases where all the terms
-        # in the q parameter appear in close proximity.
-        formatted_boosts = ["^".join(map(str, field)) for field in query_fields]
-        return " ".join(formatted_boosts)
-
-    def get_solr_status(self):
-
-        """ Get the Solr status
-        :return: response
-        """
-        response = requests.get(self.solr_url, auth=self.auth)
-        return response
-
-
-if __name__ == "__main__":
-
-    parser = ArgumentParser()
-    parser.add_argument("--env", default=os.environ.get("HT_ENVIRONMENT", "dev"))
-    parser.add_argument("--solr_host", help="Solr host", default=None)
-    parser.add_argument("--collection_name", help="Name of the collection", default=None)
-    parser.add_argument('--query', help='Query string', required=True)
-
-    args = parser.parse_args()
-
-    # Receive as a parameter an specific solr url
-    if args.solr_host:
-        solr_url = f"{args.solr_host}/solr/{args.collection_name}"
-    else:  # Use the default solr url, depending on the environment. If prod environment, use shards
-        solr_url = FULL_TEXT_SOLR_URL[args.env]
-    solr_exporter = SolrExporter(solr_url, args.env,
-                                 user=os.getenv("SOLR_USER"), password=os.getenv("SOLR_PASSWORD"))
-
-    query_config_file_path = Path(
-        config_files_path, "full_text_search/config_query.yaml"
-    )
-    
-
-    # '"good"'
-    # for x in solr_exporter.run_cursor(args.query, query_config_path=query_config_file_path, conf_query="ocr"):
-    #     print(x)

@@ -10,12 +10,15 @@ sys.path.insert(0, current_dir)
 
 # Full-text search config parameters
 FULL_TEXT_SOLR_URL = {
-    "prod": "http://macc-ht-solr-lss-1.umdl.umich.edu:8081/solr/core-1x",
+    # "prod": "http://macc-ht-solr-lss-1.umdl.umich.edu:8081/solr/core-1x",
+    "prod": "https://analytics.dev.htrc.indiana.edu/solr/core-1x",
     "dev": "http://solr-lss-dev:8983/solr/core-x"
 }
 
 CATALOG_SOLR_URL = {
-    "dev": "http://localhost:8983"
+    # "prod": "http://ictc-ht-solr-catalog.umdl.umich.edu:9033/catalog/catalog"
+    "prod": "https://analytics.dev.htrc.indiana.edu/catalog/catalog",
+    "dev": "http://localhost:9033/solr/catalog"    
 }
 
 FULL_TEXT_SEARCH_SHARDS_X = ','.join([f"http://solr-sdr-search-{i}:8081/solr/core-{i}x" for i in range(1, 12)])
@@ -33,7 +36,7 @@ DEFAULT_SOLR_PARAMS = {
 }
 
 
-def default_solr_params(env: str = "prod",is_full_text: bool = True):
+def default_solr_params(env: str = "prod"):
     # TODO: Add shards is only for prod environment and full-text search, then I have to change this function to
     # ensure we have access to Catalog in prod environment.
     """
@@ -42,9 +45,21 @@ def default_solr_params(env: str = "prod",is_full_text: bool = True):
     :return:
     """
     logger.info(f"default_solr_params - params : {env}")
-    if env == "prod" and is_full_text:
+    if env == "prod":
         add_shards(DEFAULT_SOLR_PARAMS)
     return DEFAULT_SOLR_PARAMS
+
+def default_catalog_solr_params(env: str = "prod"):
+    # TODO: Add shards is only for prod environment and full-text search, then I have to change this function to
+    # ensure we have access to Catalog in prod environment.
+    """
+    Return the default solr parameters
+    :param env:
+    :return:
+    """
+    logger.info(f"default_solr_params - params : {env}")    
+    return DEFAULT_SOLR_PARAMS
+
 
 
 def add_shards(params: dict):
