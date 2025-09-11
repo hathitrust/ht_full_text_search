@@ -54,10 +54,11 @@ class AdvancedSearchRequest(BaseModel):
     languages : list = []
     formats : list = []
     location : str = ""    
-    item_viewability : str = "all items"
+    item_viewability : str = "all items" # if matches with "all items" show with out ht_availability filter
 
     @field_validator("file_type", "item_viewability", mode="before")
     def lowercase_fields(cls, v):
+        # convert input string to lower case 
         return v.lower() if isinstance(v, str) else v
 
 
@@ -83,22 +84,21 @@ def main():
         Startup the API to index documents in Solr
         """
         print("Connecting with Solr server")
-
+        ## full text Solr setup
         ft_solr_url = FULL_TEXT_SOLR_URL[args.env]
         if args.solr_url:
-            ft_solr_url = args.solr_url
-
-        catalog_solr_url = CATALOG_SOLR_URL[args.env]
-        if args.catalog_solr_url:
-            catalog_solr_url = args.catalog_solr_url    
+            ft_solr_url = args.solr_url          
             
         exporter_api['obj'] = SolrExporter(ft_solr_url, args.env, user=os.getenv("SOLR_USER"),
                                                password=os.getenv("SOLR_PASSWORD"))
-        
-        catalog_exporter_api['obj'] = CatalogSolrExporter(catalog_solr_url, args.env)
-                     
         with open(FT_QUERY_CONFIG_PATH, "r") as file:
             CONFIG_DATA['data'] = yaml.safe_load(file)
+        
+        ## catalog Solr setup
+        catalog_solr_url = CATALOG_SOLR_URL[args.env]
+        if args.catalog_solr_url:
+            catalog_solr_url = args.catalog_solr_url  
+        catalog_exporter_api['obj'] = CatalogSolrExporter(catalog_solr_url, args.env)                             
 
         with open(CATALOG_CONFIG_PATH, "r") as file:
             CATALOG_CONFIG_DATA['data'] = yaml.safe_load(file)
@@ -200,7 +200,7 @@ def main():
     @app.post("/catalog/search/")
     async def catalog_advanced_search(request: AdvancedSearchRequest):
         """
-        Advanced search using edismax query syntax with proper field and operator handling.
+        Catalog search using standard solr query syntax with proper field and operator handling.
         """                
         try:
             logger.info(f"catalog advanced search {request}")
@@ -216,6 +216,7 @@ def main():
                     "location":request.location
                 }             
             
+            # adds ht_availability filter when full view is selected
             if not is_all_items:
                 filter_fields.update( 
                     {
@@ -224,10 +225,10 @@ def main():
                 )                  
             
             search_fields = [(CATALOG_CONFIG_DATA["data"]["field_search_map"].get(cr.field,cr.field),HTSearchQuery.preprocess_search(cr.query,cr.match_type)) for cr in request.criteria]
-            print("search_fields : ", search_fields)
+            logger.info(f"search_fields : {search_fields}")
             joined_query = HTSearchQuery.standard_search_components(search_fields,request.field_operators,CATALOG_CONFIG_DATA['data'])                                                                                
             joined_query['fq'] = build_fq_query(filter_fields, CATALOG_CONFIG_DATA["data"])
-            print(joined_query)
+            logger.info(f"Final Query framed {joined_query} ")
 
                 
             data = catalog_exporter_api['obj'].run_cursor(

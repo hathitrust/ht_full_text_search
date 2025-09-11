@@ -27,7 +27,7 @@ FULL_TEXT_SEARCH_SHARDS_Y = ','.join([f"http://solr-sdr-search-{i}:8081/solr/cor
 QUERY_PARAMETER_CONFIG_FILE = os.path.join(current_dir, "config_files", "full_text_search", "config_query.yaml")
 FACET_FILTERS_CONFIG_FILE = os.path.join(current_dir, "config_files", "full_text_search", "config_facet_filters.yaml")
 
-DEFAULT_SOLR_PARAMS = {
+DEFAULT_FT_SOLR_PARAMS = {
     "rows": 500,
     "sort": "id asc",
     "fl": ",".join(["title", "author", "id", "shard", "score"]),
@@ -35,6 +35,13 @@ DEFAULT_SOLR_PARAMS = {
     "wt": "json"
 }
 
+DEFAULT_CATALOG_SOLR_PARAMS = {
+    "rows": 500,
+    "sort": "id asc",
+    "fl": ",".join(["title", "author", "id", "shard", "score"]),
+    # "fl": ",".join([ "id" ]),
+    "wt": "json"
+}
 
 def default_solr_params(env: str = "prod"):
     # TODO: Add shards is only for prod environment and full-text search, then I have to change this function to
@@ -46,8 +53,8 @@ def default_solr_params(env: str = "prod"):
     """
     logger.info(f"default_solr_params - params : {env}")
     if env == "prod":
-        add_shards(DEFAULT_SOLR_PARAMS)
-    return DEFAULT_SOLR_PARAMS
+        add_shards(DEFAULT_FT_SOLR_PARAMS)
+    return DEFAULT_FT_SOLR_PARAMS
 
 def default_catalog_solr_params(env: str = "prod"):
     # TODO: Add shards is only for prod environment and full-text search, then I have to change this function to
@@ -58,7 +65,7 @@ def default_catalog_solr_params(env: str = "prod"):
     :return:
     """
     logger.info(f"default_solr_params - params : {env}")    
-    return DEFAULT_SOLR_PARAMS
+    return DEFAULT_CATALOG_SOLR_PARAMS
 
 
 

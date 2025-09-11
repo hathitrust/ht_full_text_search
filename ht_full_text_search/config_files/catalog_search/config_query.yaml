@@ -1,13 +1,3 @@
-titleonly:
-  parser: "edismax"
-  debug: "all"
-  qf:
-    - [title, 500000]
-  mm: "100%"
-  tie: 0.9
-
-
-
 callnoletters:
   callnoletters:
   - [emstartswith, 1]

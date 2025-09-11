@@ -40,6 +40,9 @@ def get_criteria_fields_query(criterias, field_operators, config_data):
 
 
 def build_date_filter(date_value, field_facet_mapping): 
+    """
+    Returns Solr fq values for date filtering 
+    """
     start_date, end_date, in_date = date_value.get("start_year"),date_value.get("end_year"),date_value.get("in_year")      
     date_range_facet = field_facet_mapping['date_range_facet']
     date_trie_facet = field_facet_mapping['date_trie_facet']
@@ -61,7 +64,11 @@ def build_date_filter(date_value, field_facet_mapping):
     return fq
 
 
-def build_field_filters(field,values:list|str, field_facet_mapping):                         
+def build_field_filters(field,values:list|str, field_facet_mapping):       
+    """
+    Creates filter query for generic list/str input
+    -- Ex. (location : (US OR NY))
+    """                  
     facet = field_facet_mapping.get(field)
     fq = ""
     if isinstance(values,str):
@@ -73,7 +80,10 @@ def build_field_filters(field,values:list|str, field_facet_mapping):
     return fq
 
 
-def build_fq_query(filter_fields,config_data):        
+def build_fq_query(filter_fields,config_data):     
+    """
+    Handles fq generation logic, based on filter fields (date, language, format and location)
+    """
     filters_list = []
     for field,value in filter_fields.items():  
         field_fq = ""
@@ -131,6 +141,9 @@ def write_csv_and_get_path(
 
 
 def build_joined_query(query_fields, field_operators):
+    """
+    Return Solr query depending on "AND/OR" that user selects in UI between the search fields
+    """
     defaut_op = "AND"
     joined_query = query_fields[0]
     for i in range(1, len(query_fields)):

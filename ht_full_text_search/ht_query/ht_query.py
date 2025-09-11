@@ -118,6 +118,9 @@ class HTSearchQuery:
     
     @staticmethod
     def build_and_or_onephrase(lookfor=None):
+        """
+        Returns the dict of "and", "or", "compressed", "exactmatcher" variations of given search string value
+        """
         values = {}
 
         if lookfor is None:
@@ -146,7 +149,6 @@ class HTSearchQuery:
 
         # Tokenize Input
         tokenized = HTSearchQuery.tokenize_input(lookfor)
-        print("$tokenized : ",tokenized)
 
         values['onephrase'] = '"' + " ".join(tokenized).replace('"', '') + '"'
         values['and'] = " AND ".join(tokenized)
@@ -155,7 +157,7 @@ class HTSearchQuery:
         values['compressed'] = re.sub(r'\s+', '', lookfor)
         values['exactmatcher'] = HTSearchQuery.exactmatcherify(lookfor)
         values['emstartswith'] = values['exactmatcher'] + "*"
-        print("build_and_or_onephrase values : ", values)
+        logger.info(f"build_and_or_onephrase values : {values}")
         return values
 
     @staticmethod
@@ -266,7 +268,10 @@ class HTSearchQuery:
         return text # returns search text from user for ALL of these words case
 
     @staticmethod
-    def standard_search_components(search, field_operators, config_data):        
+    def standard_search_components(search, field_operators, config_data):       
+        """
+        Frames the Solr param "q" using field operators and catalog facet configuration with input search fields
+        """ 
         searchComponents = {}
         queries_lst=[]     
 
@@ -292,6 +297,9 @@ class HTSearchQuery:
         return searchComponents
 
     def build_query_string(structure, values, joiner="OR"):
+        """
+        Recursive function that generates solr query along with search boost weights 
+        """
         clauses = []
 
         for field, clausearray in structure.items():
@@ -344,15 +352,10 @@ class HTSearchQuery:
 
         newq = f" {joiner} ".join(clauses)
         return newq
-
-    # -----------------------
-    # Stub helpers for PHP equivalents
-    # -----------------------
+   
 
     @staticmethod
     def LCCallNumberNormalizer(text, strict=False):
-        # TODO: implement call number normalization logic
-        # For now, just return text unchanged
         return text.strip() if text else None
 
     @staticmethod

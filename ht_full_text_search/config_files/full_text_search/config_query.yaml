@@ -149,6 +149,7 @@ subject:
 
 field_search_map:
   "Full Text & All Fields": ocr
+  "Only Full Text": ocronly
   "All Fields": all
   "Title": title
   "Author": author
