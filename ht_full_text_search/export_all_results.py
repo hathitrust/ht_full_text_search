@@ -259,7 +259,7 @@ class SolrExporter:
         """ Get the Solr status
         :return: response
         """
-        response = requests.get(self.solr_url, auth=self.auth)
+        response = requests.get(self.ft_solr_url, auth=self.auth)
         return response
 
 
