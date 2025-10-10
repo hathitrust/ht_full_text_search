@@ -245,15 +245,15 @@ class HTSearchQuery:
                 operator = "OR"
 
             # Get the formatted query using HTSearchQuery            
-            formatted_query = HTSearchQuery.manage_string_query_solr6(criteria.query, operator, field if len(criterias)>1 else None)
+            formatted_query = HTSearchQuery.manage_string_query_solr6(criteria.query, operator, None)
             query_fields.append(formatted_query)
             # Get results for this criterion
 
-        joined_query = build_joined_query(query_fields, field_operators)
-        logger.info(f"build_joined_query - output : {joined_query}")
+        # joined_query = build_joined_query(query_fields, field_operators)
+        # logger.info(f"build_joined_query - output : {joined_query}")
 
         # query_fields = " OR ".join(query_fields)
-        return fields, joined_query
+        return fields, query_fields
 
     
     @staticmethod
@@ -380,9 +380,11 @@ class HTSearchQuery:
        
         # query_string_dict = {"q": HTSearchQuery.get_exact_phrase_query(input_phrase)}
         formatted_query = ""
-        if operator == "OR" or operator == "AND":
+        if operator == "OR":
             # " AND ".join(input_phrase.split())
-            formatted_query = f" {operator} ".join(input_phrase.split())            
+            formatted_query = f" {operator} ".join(input_phrase.split())        
+        elif operator == "AND":
+            formatted_query = input_phrase
         elif operator is None:
             formatted_query = "\"" + input_phrase + "\""
 

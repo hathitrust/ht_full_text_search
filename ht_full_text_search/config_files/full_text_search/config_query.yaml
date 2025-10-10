@@ -123,11 +123,11 @@ author:
     - [author2, 20000]
     - [author_top, 5000]
     - [author_rest, 1000]
-  qf: # Fields used to find the results
-    - [author, 100]
-    - [author2, 50]
-    - [author_top, 20]
-    - [author_rest, 10]
+  qf:
+    - [author, 10]
+    - [author2, 5]
+    - [author_top, 2]
+    - [author_rest, 1]
   mm: "100%"
   tie: 0.1
 
@@ -161,3 +161,4 @@ field_facet_mapping:
   "location": htsource
   "date_range_facet": publishDateRange
   "date_trie_facet": publishDateTrie
+  "rights": rights

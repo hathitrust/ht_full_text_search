@@ -21,8 +21,8 @@ CATALOG_SOLR_URL = {
     "dev": "http://localhost:9033/solr/catalog"    
 }
 
-FULL_TEXT_SEARCH_SHARDS_X = ','.join([f"http://solr-sdr-search-{i}:8081/solr/core-{i}x" for i in range(1, 12)])
-FULL_TEXT_SEARCH_SHARDS_Y = ','.join([f"http://solr-sdr-search-{i}:8081/solr/core-{i}y" for i in range(1, 12)])
+FULL_TEXT_SEARCH_SHARDS_X = ','.join([f"http://solr-sdr-search-{i}:8081/solr/core-{i}x" for i in range(1, 13)])
+FULL_TEXT_SEARCH_SHARDS_Y = ','.join([f"http://solr-sdr-search-{i}:8081/solr/core-{i}y" for i in range(1, 13)])
 
 QUERY_PARAMETER_CONFIG_FILE = os.path.join(current_dir, "config_files", "full_text_search", "config_query.yaml")
 FACET_FILTERS_CONFIG_FILE = os.path.join(current_dir, "config_files", "full_text_search", "config_facet_filters.yaml")
@@ -30,7 +30,7 @@ FACET_FILTERS_CONFIG_FILE = os.path.join(current_dir, "config_files", "full_text
 DEFAULT_FT_SOLR_PARAMS = {
     "rows": 500,
     "sort": "id asc",
-    "fl": ",".join(["title", "author", "id", "shard", "score"]),
+    "fl": ",".join(["title", "author", "id", "shard", "score", "rights"]),
     # "fl": ",".join([ "id" ]),
     "wt": "json"
 }

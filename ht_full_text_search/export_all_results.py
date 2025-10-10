@@ -11,6 +11,7 @@ from requests.auth import HTTPBasicAuth
 from ht_full_text_search.config_files import config_files_path
 # Add the parent directory ~/ht_full_text_search into the PYTHONPATH.
 from ht_full_text_search.config_search import default_solr_params, FULL_TEXT_SOLR_URL
+from ht_full_text_search.utils.helpers import build_joined_query
 from ht_full_text_search.utils.ht_logger import get_ht_logger
 
 logger = get_ht_logger(name=__name__)
@@ -89,7 +90,6 @@ def solr_query_params(query_config_file=None, conf_query="ocr"):
             if "qf" in data:
                 qf.append(SolrExporter.create_boost_phrase_fields(data["qf"]))
 
-    # import pdb;pdb.set_trace()
 
     params = {
         "mm" : mm[0],
@@ -153,7 +153,7 @@ class SolrExporter:
 
         return response
 
-    def run_cursor(self, query_string, query_config_path=None, conf_query="ocr", list_output_fields: list = None,fq_formatted=None,file_type=""):
+    def run_cursor(self, query_string, field_operators, query_config_path=None, conf_query="ocr", list_output_fields: list = None,fq_formatted=None,file_type=""):
 
         # TODO: This function will receive the query string and the query type (ocr or all). From memory, it will
         # instantiate the query parameters (params["q"]) and run the query.
@@ -190,7 +190,14 @@ class SolrExporter:
             list_output_fields = params["fl"].split(",")
         params["cursorMark"] = "*"        
         params["debugQuery"] = "true"                
-        params["q"] = make_query(query_string, query_config_path, conf_query=conf_query)        
+        
+        queries = []
+        for i, val in enumerate(conf_query):            
+            q = make_query(query_string[i], query_config_path, conf_query=conf_query[i])
+            queries.append(f"+_query_:\"{q}\"")
+        
+        # params["q"] = " AND ".join(queries)
+        params["q"] = build_joined_query(queries, field_operators)
         
         # params["q"]='(title_ab:(political drama)^25000 OR title_a:(political drama)^15000 OR titleProper:(political drama*)^8000 OR titleProper:("political drama")^1200 OR titleProper:(political AND drama)^120 OR title_topProper:("political drama")^600 OR title_topProper:(political AND drama)^60 OR title_restProper:("political drama")^400 OR title_restProper:(political AND drama)^40 OR series:("political drama")^500 OR series:(political AND drama)^50 OR series2:("political drama")^500 OR series2:(political AND drama)^50 OR title:(political AND drama)^30 OR title_top:(political AND drama)^20 OR title_rest:(political AND drama)^1)'
         # params["fq"]='ht_availability:"Full text"'
@@ -205,6 +212,10 @@ class SolrExporter:
             params["fq"] = fq_formatted
 
         print("print the query:1 ", params)
+#         params["q"]="""{!edismax qf='titleProper^120 title_topProper^60 title_restProper^40 series^50 series2^50 title^30 title_top^20 title_rest^10 ' 
+#  pf='title_ab^25000 title_a^15000 titleProper^1200 title_topProper^600 title_restProper^400 series^300 series2^300 ' 
+#  mm='100%' tie='0.1' } dictionary new ships"""
+        
         # params["q"] = """{!edismax mm='100%' tie='0.1' pf='author^25000 author2^20000 author_top^5000 author_rest^1000 title_ab^25000 title_a^15000 titleProper^1200 title_topProper^600 title_restProper^400 series^300 series2^300' qf='author^100 titleProper^120 title_topProper^60 title_restProper^40 series^50 series2^50 title^30 title_top^20 title_rest^10'} (title:Economic AND Theory) AND (author:Keynes)"""
                         #   !edismax mm='100%' tie='0.1' pf='author^25000 author2^20000 author_top^5000 author_rest^1000 title_ab^25000 title_a^15000 titleProper^1200 title_topProper^600 title_restProper^400 series^300 series2^300' qf='author^100 titleProper^120 title_topProper^60 title_restProper^40 series^50 series2^50 title^30 title_top^20 title_rest^10'} (author:keynes) OR (title:Economic AND Theory)
         # {!edismax mm='100%' tie='0.1' pf='topicProper^5 topic^1 fullgeographic^1 fullgenre^1 era^1' qf='topicProper^5 topic^1 fullgeographic^1 fullgenre^1 era^1'} (subject:Cultural AND Memory)
@@ -219,7 +230,11 @@ class SolrExporter:
         # : Special characters like '.' and ':' must be escaped using '\\' to avoid Solr syntax errors.
         # params["q"]= "id:coo\\.31924001840028 OR id:coo\\.31924074225651 OR id:coo1\\.ark\\:/13960/t04x5w53p OR id:coo1\\.ark\\:/13960/t3dz0tz2f OR id:coo1\\.ark\\:/13960/t3fx7ts39 OR id:hvd\\.hb08ny OR id:hvd\\.hb0x5l OR id:hvd\\.hn7v5x OR id:hvd\\.hntxc1 OR id:hvd\\.hw2gvl OR id:mdp\\.39015002663139 OR id:mdp\\.39015010834789 OR id:mdp\\.39015020465244 OR id:mdp\\.39015020815620 OR id:mdp\\.39015027611170 OR id:mdp\\.39015058499875 OR id:mdp\\.39015063039674 OR id:mdp\\.39015064508032 OR id:mdp\\.39015067877996 OR id:njp\\.32101069160594 OR id:uc1\\.\\$b236521 OR id:uc1\\.\\$b237942 OR id:uc1\\.\\$b237943 OR id:uc1\\.\\$b237988 OR id:uc1\\.\\$b238063 OR id:uc1\\.\\$b280885 OR id:uc1\\.\\$b281359 OR id:uc1\\.\\$b666025 OR id:uc1\\.32106016668516 OR id:uc1\\.b3854713 OR id:uc1\\.b3909054 OR id:uc2\\.ark\\:/13960/t9m33077j OR id:ucbk\\.ark\\:/28722/h26m33n41 OR id:ufl\\.31262051116977 OR id:uiug\\.30112064708677"
         # "id:coo\\.31924001840028 OR id:coo\\.31924074225651 OR id:coo1\\.ark\\:/13960/t04x5w53p OR id:coo1\\.ark\\:/13960/t3dz0tz2f OR id:coo1\\.ark\\:/13960/t3fx7ts39 OR id:hvd\\.hb08ny OR id:hvd\\.hb0x5l OR id:hvd\\.hn7v5x OR id:hvd\\.hntxc1 OR id:hvd\\.hw2gvl OR id:mdp\\.39015002663139 OR id:mdp\\.39015010834789 OR id:mdp\\.39015020465244 OR id:mdp\\.39015020815620 OR id:mdp\\.39015027611170 OR id:mdp\\.39015058499875 OR id:mdp\\.39015063039674 OR id:mdp\\.39015064508032 OR id:mdp\\.39015067877996 OR id:njp\\.32101069160594 OR id:uc1\\.\\$b236521 OR id:uc1\\.\\$b237942 OR id:uc1\\.\\$b237943 OR id:uc1\\.\\$b237988 OR id:uc1\\.\\$b238063 OR id:uc1\\.\\$b280885 OR id:uc1\\.\\$b281359 OR id:uc1\\.\\$b666025 OR id:uc1\\.32106016668516 OR id:uc1\\.b3854713 OR id:uc1\\.b3909054 OR id:uc2\\.ark\\:/13960/t9m33077j OR id:ucbk\\.ark\\:/28722/h26m33n41 OR id:ufl\\.31262051116977 OR id:uiug\\.30112064708677"
-        # params["q"] = "id:coo\\.31924071651545"                
+        # params["q"] = "id:hvd\\.32044080083926"   
+        
+        # params["q"] = "id:loc\\.ark\\:/13960/t6ww7jd9g OR id:nyp\\.33433081903647 OR id:loc\\.ark\\:/13960/t3zs2wm38 OR id:hvd\\.hn5kja OR id:loc\\.ark\\:/13960/t3pv6wc2c OR id:coo1\\.ark\\:/13960/t83j41m0f OR id:wu\\.89099964868 OR id:hvd\\.32044018961201 OR id:mdp\\.39015035314320 OR id:wu\\.89054772421 OR id:hvd\\.hn1yy7"
+        # params["q"] = "id:uc1\\.31822029010808 OR id:coo\\.31924071616928"
+        
         
         while True:            
             results = self.send_query(params)  # send_query            

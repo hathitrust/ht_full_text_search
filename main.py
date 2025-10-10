@@ -157,7 +157,7 @@ def main():
         )
 
         
-    @app.post("/advanced_search/")
+    @app.post("/fulltext/")
     async def advanced_search(request: AdvancedSearchRequest):
         """
         Advanced search using edismax query syntax with proper field and operator handling.
@@ -174,6 +174,17 @@ def main():
                     "format":request.formats,
                     "location":request.location
                 } 
+            
+            is_all_items = request.item_viewability.lower() == "all items"            
+            
+            # adds rights filter when full view is selected
+            if not is_all_items:
+                filter_fields.update( 
+                    {
+                        "rights":["1","25","9","13","23","18","15","7","21","24","14","11","17","22","12","20","10"],
+                    }
+                )                  
+            
 
             
             fields, joined_query = HTSearchQuery.get_criteria_fields_query(request.criteria, request.field_operators, CONFIG_DATA["data"])                
@@ -184,7 +195,7 @@ def main():
 
                     
             data = exporter_api['obj'].run_cursor(
-                    joined_query,
+                    joined_query,request.field_operators,
                     query_config_path=FT_QUERY_CONFIG_PATH,
                     conf_query=fields,fq_formatted=fq_formatted         
                 )     
@@ -197,7 +208,7 @@ def main():
             logger.error(f"Failed while fetching data : {traceback.print_exc()}")
             return {"error": "Internal error occured while processing the request"}  
         
-    @app.post("/catalog/search/")
+    @app.post("/catalog/")
     async def catalog_advanced_search(request: AdvancedSearchRequest):
         """
         Catalog search using standard solr query syntax with proper field and operator handling.
