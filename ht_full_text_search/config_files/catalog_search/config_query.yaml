@@ -380,6 +380,10 @@ field_facet_mapping:
   "date_range_facet": publishDateRange
   "date_trie_facet": publishDateTrie
   "ht_availability": ht_availability
+  "subject": topicStr
+  "author": authorStr
+  "place_of_pub": country_of_pub_facet
+
 
 field_search_map:
   "all fields": all

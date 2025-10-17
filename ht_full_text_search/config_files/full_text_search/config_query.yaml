@@ -162,3 +162,6 @@ field_facet_mapping:
   "date_range_facet": publishDateRange
   "date_trie_facet": publishDateTrie
   "rights": rights
+  "subject": topicStr_dv
+  "author": authorStr_dv
+  "place_of_pub": countryOfPubStr

@@ -54,6 +54,9 @@ class AdvancedSearchRequest(BaseModel):
     languages : list = []
     formats : list = []
     location : str = ""    
+    subject : str = ""    
+    author : str = ""    
+    place_of_pub : str = ""       
     item_viewability : str = "all items" # if matches with "all items" show with out ht_availability filter
 
     @field_validator("file_type", "item_viewability", mode="before")
@@ -172,7 +175,10 @@ def main():
                     "date":{"start_year":request.start_year,"end_year":request.end_year,"in_year":request.in_year},
                     "language":request.languages,
                     "format":request.formats,
-                    "location":request.location
+                    "location":request.location,
+                    "subject":request.subject,
+                    "author":request.author,
+                    "place_of_pub":request.place_of_pub
                 } 
             
             is_all_items = request.item_viewability.lower() == "all items"            
@@ -224,7 +230,10 @@ def main():
                     "date":{"start_year":request.start_year,"end_year":request.end_year,"in_year":request.in_year},
                     "language":request.languages,
                     "format":request.formats,
-                    "location":request.location
+                    "location":request.location,
+                    "subject":request.subject,
+                    "author":request.author,
+                    "place_of_pub":request.place_of_pub
                 }             
             
             # adds ht_availability filter when full view is selected
