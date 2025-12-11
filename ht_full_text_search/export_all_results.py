@@ -194,7 +194,9 @@ class SolrExporter:
         queries = []
         for i, val in enumerate(conf_query):            
             q = make_query(query_string[i], query_config_path, conf_query=conf_query[i])
-            queries.append(f"+_query_:\"{q}\"")
+             # Escape quotes inside q, otherwise _query_:"..." breaks
+            q_safe = q.replace("\\", "\\\\").replace('"', '\\"')
+            queries.append(f"_query_:\"{q_safe}\"")
         
         # params["q"] = " AND ".join(queries)
         params["q"] = build_joined_query(queries, field_operators)

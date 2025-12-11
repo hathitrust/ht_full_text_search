@@ -142,14 +142,41 @@ def write_csv_and_get_path(
 
 def build_joined_query(query_fields, field_operators):
     """
-    Return Solr query depending on "AND/OR" that user selects in UI between the search fields
+    Builds a Solr query with parentheses around every pair:
+    (A OR B) OR C
+    (A OR B) OR (C OR D)
     """
-    defaut_op = "AND"
-    joined_query = query_fields[0]
-    for i in range(1, len(query_fields)):
-        if i - 1 < len(field_operators):  # check if operator at i-1 exists
-            op = field_operators[i - 1]
-        else:   
-            op = defaut_op
-        joined_query += f" {op} {query_fields[i]}"
-    return joined_query
+
+    default_op = "AND"
+    grouped = []
+    i = 0
+
+    while i < len(query_fields):
+        # If a pair exists, group it
+        if i + 1 < len(query_fields):
+            op = (
+                field_operators[i]
+                if i < len(field_operators)
+                else default_op
+            )
+            grouped.append(f"({query_fields[i]} {op} {query_fields[i+1]})")
+            i += 2
+        else:
+            # Single leftover element without a pair
+            grouped.append(query_fields[i])
+            i += 1
+
+    # Now join the grouped chunks using remaining operators
+    final_query = grouped[0]
+    op_index = 1
+
+    for j in range(1, len(grouped)):
+        op = (
+            field_operators[op_index]
+            if op_index < len(field_operators)
+            else default_op
+        )
+        final_query += f" {op} {grouped[j]}"
+        op_index += 1
+
+    return final_query
