@@ -2,6 +2,8 @@ import json
 import os
 import requests
 import yaml
+import csv
+import time
 from pathlib import Path
 from argparse import ArgumentParser
 from requests.auth import HTTPBasicAuth
@@ -9,6 +11,10 @@ from requests.auth import HTTPBasicAuth
 from ht_full_text_search.config_files import config_files_path
 # Add the parent directory ~/ht_full_text_search into the PYTHONPATH.
 from ht_full_text_search.config_search import default_solr_params, FULL_TEXT_SOLR_URL
+from ht_full_text_search.utils.ht_logger import get_ht_logger
+
+logger = get_ht_logger(name=__name__)
+
 
 # This is a quick attempt to do a query to solr more or less as we issue it in
 # production and to then export all results using the cursorMark results
@@ -49,8 +55,9 @@ def process_results(item: dict, list_output_fields: list) -> str:
     Returns:
         str: JSON string of the processed result.
     """
-
+    # logger.info(f"process_results - params : {item} {list_output_fields}")
     result = {field: item.get(field, None) for field in list_output_fields}
+    
     return json.dumps(result)
 
 
@@ -61,21 +68,37 @@ def solr_query_params(query_config_file=None, conf_query="ocr"):
     :param conf_query: str, query configuration name. Each query has a name to identify it.
     :return: str, formatted Solr query parameters
     """
+    logger.info(f"solr_query_params - params : {query_config_file} {conf_query}")
+    if isinstance(conf_query,str):
+        conf_query = [conf_query]
+    params = {}
+    mm = []
+    tie = []
+    pf = []
+    qf = []
+    for query in conf_query:
+        with open(query_config_file, "r") as file:
+            data = yaml.safe_load(file)[query]
 
-    with open(query_config_file, "r") as file:
-        data = yaml.safe_load(file)[conf_query]
+            mm.append(data["mm"])
+            tie.append(data["tie"])
+            
 
-        params = {
-            "mm": data["mm"],
-            "tie": data["tie"]
-        }
+            if "pf" in data:
+                pf.append(SolrExporter.create_boost_phrase_fields(data["pf"]))
+            if "qf" in data:
+                qf.append(SolrExporter.create_boost_phrase_fields(data["qf"]))
 
-        if "pf" in data:
-            params.update({"pf": SolrExporter.create_boost_phrase_fields(data["pf"])})
-        if "qf" in data:
-            params.update({"qf": SolrExporter.create_boost_phrase_fields(data["qf"])})
+    # import pdb;pdb.set_trace()
 
-        return " ".join([f"{k}='{v}'" for k, v in params.items()])
+    params = {
+        "mm" : mm[0],
+        "tie" : tie[0],
+        "pf": " ".join(pf),
+        "qf": " ".join(qf),
+    }
+
+    return " ".join([f"{k}='{v}'" for k, v in params.items()])
 
 
 def make_query(query, query_config_file=None, conf_query="ocr"):
@@ -86,7 +109,10 @@ def make_query(query, query_config_file=None, conf_query="ocr"):
         :param query: str, query string
         :return: str, formatted Solr query string
     """
+    logger.info(f"make_query - params : {query} {query_config_file} {conf_query}")
     return f"{{!edismax {solr_query_params(query_config_file=query_config_file, conf_query=conf_query)}}} {query}"
+
+
 
 
 class SolrExporter:
@@ -113,7 +139,7 @@ class SolrExporter:
         :param params: dict, query parameters
         :return: response
         """
-
+        # logger.info(f"send_query - params : {params}")
         # Use stream=True to avoid loading all the data in memory at once (useful for large responses)
         # In chunked transfer, the data stream is divided into a series of non-overlapping "chunks".
 
@@ -124,7 +150,7 @@ class SolrExporter:
 
         return response
 
-    def run_cursor(self, query_string, query_config_path=None, conf_query="ocr", list_output_fields: list = None):
+    def run_cursor(self, query_string, query_config_path=None, conf_query="ocr", list_output_fields: list = None,fq_formatted=None,file_type=""):
 
         # TODO: This function will receive the query string and the query type (ocr or all). From memory, it will
         # instantiate the query parameters (params["q"]) and run the query.
@@ -148,9 +174,12 @@ class SolrExporter:
         :param query_string: Str, query string
         :return: generator
         """
+        logger.info(f"run_cursor - params : {query_string} {query_config_path} {conf_query} {list_output_fields} {fq_formatted} {file_type}")
 
-        params = default_solr_params(self.environment)
-
+        params = dict(default_solr_params(self.environment))
+        logger.info(f"default_solr_params - output : {params}")
+       
+        # print(params,end="\n")
         # Replace the default list of fields with the one passed as a parameter
         if list_output_fields is not None:
             params["fl"] = ",".join(list_output_fields)
@@ -159,20 +188,42 @@ class SolrExporter:
         params["cursorMark"] = "*"
         # TODO: Implement the feature to access to Solr debug using this python script
         params["debugQuery"] = "true"
+        # print(params, end="\n")
         params["q"] = make_query(query_string, query_config_path, conf_query=conf_query)
+        logger.info(f'make_query - output : {params["q"]}')
+        if fq_formatted:
+            params["fq"] = fq_formatted
+        print("print the query:1 ", params)
+        # params["q"] = """{!edismax mm='100%' tie='0.1' pf='author^25000 author2^20000 author_top^5000 author_rest^1000 title_ab^25000 title_a^15000 titleProper^1200 title_topProper^600 title_restProper^400 series^300 series2^300' qf='author^100 titleProper^120 title_topProper^60 title_restProper^40 series^50 series2^50 title^30 title_top^20 title_rest^10'} (title:Economic AND Theory) AND (author:Keynes)"""
+                        #   !edismax mm='100%' tie='0.1' pf='author^25000 author2^20000 author_top^5000 author_rest^1000 title_ab^25000 title_a^15000 titleProper^1200 title_topProper^600 title_restProper^400 series^300 series2^300' qf='author^100 titleProper^120 title_topProper^60 title_restProper^40 series^50 series2^50 title^30 title_top^20 title_rest^10'} (author:keynes) OR (title:Economic AND Theory)
+        # {!edismax mm='100%' tie='0.1' pf='topicProper^5 topic^1 fullgeographic^1 fullgenre^1 era^1' qf='topicProper^5 topic^1 fullgeographic^1 fullgenre^1 era^1'} (subject:Cultural AND Memory)
+        # {!edismax mm='100%' tie='0.1' pf='topicProper^5 topic^1 fullgeographic^1 fullgenre^1 era^1' qf='topicProper^5 topic^1 fullgeographic^1 fullgenre^1 era^1'} Cultural AND Memory
+        
+        # print(params, end="\n")
 
-        while True:
+        #When we want to check by id's
+        # params["q"]= "id:coo\\.31924001840028 OR id:coo\\.31924074225651 OR id:coo1\\.ark\\:/13960/t04x5w53p OR id:coo1\\.ark\\:/13960/t3dz0tz2f OR id:coo1\\.ark\\:/13960/t3fx7ts39 OR id:hvd\\.hb08ny OR id:hvd\\.hb0x5l OR id:hvd\\.hn7v5x OR id:hvd\\.hntxc1 OR id:hvd\\.hw2gvl OR id:mdp\\.39015002663139 OR id:mdp\\.39015010834789 OR id:mdp\\.39015020465244 OR id:mdp\\.39015020815620 OR id:mdp\\.39015027611170 OR id:mdp\\.39015058499875 OR id:mdp\\.39015063039674 OR id:mdp\\.39015064508032 OR id:mdp\\.39015067877996 OR id:njp\\.32101069160594 OR id:uc1\\.\\$b236521 OR id:uc1\\.\\$b237942 OR id:uc1\\.\\$b237943 OR id:uc1\\.\\$b237988 OR id:uc1\\.\\$b238063 OR id:uc1\\.\\$b280885 OR id:uc1\\.\\$b281359 OR id:uc1\\.\\$b666025 OR id:uc1\\.32106016668516 OR id:uc1\\.b3854713 OR id:uc1\\.b3909054 OR id:uc2\\.ark\\:/13960/t9m33077j OR id:ucbk\\.ark\\:/28722/h26m33n41 OR id:ufl\\.31262051116977 OR id:uiug\\.30112064708677"
+        # "id:coo\\.31924001840028 OR id:coo\\.31924074225651 OR id:coo1\\.ark\\:/13960/t04x5w53p OR id:coo1\\.ark\\:/13960/t3dz0tz2f OR id:coo1\\.ark\\:/13960/t3fx7ts39 OR id:hvd\\.hb08ny OR id:hvd\\.hb0x5l OR id:hvd\\.hn7v5x OR id:hvd\\.hntxc1 OR id:hvd\\.hw2gvl OR id:mdp\\.39015002663139 OR id:mdp\\.39015010834789 OR id:mdp\\.39015020465244 OR id:mdp\\.39015020815620 OR id:mdp\\.39015027611170 OR id:mdp\\.39015058499875 OR id:mdp\\.39015063039674 OR id:mdp\\.39015064508032 OR id:mdp\\.39015067877996 OR id:njp\\.32101069160594 OR id:uc1\\.\\$b236521 OR id:uc1\\.\\$b237942 OR id:uc1\\.\\$b237943 OR id:uc1\\.\\$b237988 OR id:uc1\\.\\$b238063 OR id:uc1\\.\\$b280885 OR id:uc1\\.\\$b281359 OR id:uc1\\.\\$b666025 OR id:uc1\\.32106016668516 OR id:uc1\\.b3854713 OR id:uc1\\.b3909054 OR id:uc2\\.ark\\:/13960/t9m33077j OR id:ucbk\\.ark\\:/28722/h26m33n41 OR id:ufl\\.31262051116977 OR id:uiug\\.30112064708677"
+                        
+        
+        while True:            
             results = self.send_query(params)  # send_query
-
+            # print("Printing result.content: ", results.content)            
             output = json.loads(results.content)
-
+            # print("printing output", output, len(output))
+            print(len(output['response']['docs']))
+            # import pdb;pdb.set_trace()
             for result in output['response']['docs']:
-                yield process_results(result, list_output_fields)
+                response_data = process_results(result, list_output_fields)                                  
+                yield response_data                       
+
             if params["cursorMark"] != output["nextCursorMark"]:
                 params["cursorMark"] = output["nextCursorMark"]
             else:
                 break
+               
 
+    
     @staticmethod
     def create_boost_phrase_fields(query_fields):
 
@@ -219,5 +270,5 @@ if __name__ == "__main__":
     )
 
     # '"good"'
-    for x in solr_exporter.run_cursor(args.query, query_config_path=query_config_file_path, conf_query="ocr"):
-        print(x)
+    # for x in solr_exporter.run_cursor(args.query, query_config_path=query_config_file_path, conf_query="ocr"):
+    #     print(x)

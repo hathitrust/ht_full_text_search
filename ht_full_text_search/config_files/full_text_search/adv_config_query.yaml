@@ -1,7 +1,5 @@
-# This config file contains the parameters used for creating the Solr query
-
 all:
-  pf: # Fields used for boosting results
+  pf:
     - [title_ab, 10000]
     - [title_a, 8000]
     - [titleProper, 1500]
@@ -13,9 +11,12 @@ all:
     - [author2, 800]
     - [author_top, 100]
     - [author_rest, 50]
+    # - [fullgeographic, 200]
     - [topicProper, 200]
+    # - [fullgenre, 200]
+    # - [hlb3, 200]
     - [allfieldsProper, 100]
-  qf: # Fields used to find the results
+  qf:
     - [allfieldsProper, 2]
     - [allfields, 1]
     - [titleProper, 50]
@@ -35,28 +36,26 @@ all:
     - [lccn, 1]
     - [oclc, 1]
     - [sdrnum, 1]
-    #- [ht_id, 1]
+    # - [ctrlnum, 1]
+    # - [ht_id, 1]
     - [isn_related, 1]
     - [rptnum, 1]
     - [topicProper, 2]
     - [topic, 1]
+    # - [hlb3, 1]
+    # - [fullgeographic, 1]
+    # - [fullgenre, 1]
     - [era, 1]
   mm: "100%"
   tie: 0.5
-  parser: "edismax"
-  debug: "all"
 
 ocronly:
-  parser: "edismax"
-  debug: "all"
   qf:
     - [ocr, 500000]
   mm: "100%"
   tie: 0.9
 
 ocr:
-  parser: "edismax"
-  debug: "all"
   pf:
     - [title_ab, 10000]
     - [titleProper, 1500]
@@ -67,6 +66,8 @@ ocr:
     - [author, 1600]
     - [author2, 800]
     - [topicProper, 200]
+    - [fullgenre, 200]
+    - [hlb3, 200]
     - [allfieldsProper, 100]
   qf:
     - [ocr, 50000]
@@ -86,10 +87,14 @@ ocr:
     - [isbn, 1]
     - [oclc, 1]
     - [sdrnum, 1]
+    - [ctrlnum, 1]
     - [id, 1]
     - [rptnum, 1]
     - [topicProper, 2]
     - [topic, 1]
+    - [hlb3, 1]
+    - [fullgeographic, 1]
+    - [fullgenre, 1]
     - [era, 1]
   mm: "100%"
   tie: 0.9
@@ -147,16 +152,8 @@ subject:
   mm: "100%"
   tie: 0.1
 
-field_search_map:
-  "Full Text & All Fields": ocr
-  "All Fields": all
-  "Title": title
-  "Author": author
-  "Subject": subject
-
-field_facet_mapping:
-  "language": language008_full
-  "format": format
-  "location": htsource
-  "date_range_facet": publishDateRange
-  "date_trie_facet": publishDateTrie
+year:
+  qf:
+    - [publishDateRange, 25000]
+  mm: "100%"
+  tie: 0.9
