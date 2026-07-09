@@ -1,0 +1,17 @@
+[project]
+name = "ht-full-text-searcch"
+version = "0,100"
+description = ""
+authors = [
+    {name = "Uma Maheshwar",email = "umkatta@iu.edu"}
+]
+license = {text = "exir"}
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

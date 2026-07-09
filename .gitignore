@@ -3,6 +3,17 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+scripts/extract_ui_vol.py
+scripts/file_path
+csv_files/export.csv
+
+# macOS system files
+.DS_Store
+
+# IntelliJ / PyCharm project settings
+.idea/
+
+
 # C extensions
 *.so
 

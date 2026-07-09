@@ -1,27 +1,83 @@
 import argparse
+import csv
+import json
 import os
+
 
 from contextlib import asynccontextmanager
 from pathlib import Path
-
-from fastapi.responses import StreamingResponse
-
+import re
+import time
+from typing import List
+from fastapi.responses import JSONResponse, StreamingResponse
+from ht_full_text_search.ht_query.ht_query import HTSearchQuery
+from ht_full_text_search.utils.ht_logger import get_ht_logger
 from main_test import SOLR_OUTPUT_SAMPLE
-
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
-from ht_full_text_search.config_search import FULL_TEXT_SOLR_URL
-from ht_full_text_search.export_all_results import SolrExporter
+from ht_full_text_search.config_search import FULL_TEXT_SOLR_URL, CATALOG_SOLR_URL, default_solr_params
+from ht_full_text_search.export_all_results import SolrExporter, make_query
+from ht_full_text_search.catalog_export_all_results import CatalogSolrExporter
 from ht_full_text_search.config_files import config_files_path
+from ht_full_text_search.utils.helpers import write_csv_and_get_path, build_fq_query
+from pydantic import BaseModel, field_validator
+import yaml
+import traceback
+
+logger = get_ht_logger(name=__name__)
+
+#Using for query endpoint
+class SearchRequest(BaseModel):
+    field: str = "ocr"  # Default to ocr"
+    query: str
+    file_type: str = "json"  # Default to JSON, can be "csv"
+
+# Models for advanced search
+class SearchCriteria(BaseModel):
+    field: str  # Field type (title, author, etc.)
+    query: str  # Search term
+    match_type: str="all of these words"  # "all of these words", "any of these words", "this exact phrase"
+
+    @field_validator("field", "match_type", mode="before")
+    def lowercase_fields(cls, v):
+        return v.lower() if isinstance(v, str) else v
+
+#Using for Advance search endpoint
+class AdvancedSearchRequest(BaseModel):
+    criteria: List[SearchCriteria]
+    field_operators: List[str]=[]  # "AND" or "OR" between fields
+    file_type: str = "json"  # Output format
+    start_year: str = ""
+    end_year: str = ""
+    in_year: str = ""
+    languages : list = []
+    formats : list = []
+    location : str = ""    
+    subject : str = ""    
+    author : str = ""    
+    place_of_pub : str = ""       
+    item_viewability : str = "all items" # if matches with "all items" show with out ht_availability filter
+
+    @field_validator("file_type", "item_viewability", mode="before")
+    def lowercase_fields(cls, v):
+        # convert input string to lower case 
+        return v.lower() if isinstance(v, str) else v
+
 
 exporter_api = {}
+catalog_exporter_api = {}
+CONFIG_DATA={}
+CATALOG_CONFIG_DATA = {}
+FT_QUERY_CONFIG_PATH = Path(config_files_path, 'full_text_search/config_query.yaml')   
+CATALOG_CONFIG_PATH = Path(config_files_path, 'catalog_search/config_query.yaml')   
+
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--env", default=os.environ.get("HT_ENVIRONMENT", "dev"))
     parser.add_argument("--solr_url", help="Solr url", default=None)
+    parser.add_argument("--catalog_solr_url", help="Catalog Solr url", default=None)
 
     args = parser.parse_args()
 
@@ -31,12 +87,26 @@ def main():
         Startup the API to index documents in Solr
         """
         print("Connecting with Solr server")
-
-        solr_url = FULL_TEXT_SOLR_URL[args.env]
+        ## full text Solr setup
+        ft_solr_url = FULL_TEXT_SOLR_URL[args.env]
         if args.solr_url:
-            solr_url = args.solr_url
-        exporter_api['obj'] = SolrExporter(solr_url, args.env, user=os.getenv("SOLR_USER"),
+            ft_solr_url = args.solr_url          
+            
+        exporter_api['obj'] = SolrExporter(ft_solr_url, args.env, user=os.getenv("SOLR_USER"),
                                                password=os.getenv("SOLR_PASSWORD"))
+        with open(FT_QUERY_CONFIG_PATH, "r") as file:
+            CONFIG_DATA['data'] = yaml.safe_load(file)
+        
+        ## catalog Solr setup
+        catalog_solr_url = CATALOG_SOLR_URL[args.env]
+        if args.catalog_solr_url:
+            catalog_solr_url = args.catalog_solr_url  
+        catalog_exporter_api['obj'] = CatalogSolrExporter(catalog_solr_url, args.env)                             
+
+        with open(CATALOG_CONFIG_PATH, "r") as file:
+            CATALOG_CONFIG_DATA['data'] = yaml.safe_load(file)
+        print("Config loaded")
+              
         yield
 
         # Add some logic here to close the connection
@@ -56,7 +126,7 @@ def main():
         return {"status": response.status_code, "description": response.headers}
 
     @app.post("/query/")
-    def solr_query_phrases(query):
+    async def solr_query_phrases(request: SearchRequest):
         """
         Look for exact matches in the OCR text.
         :param query: Phrase to search
@@ -68,14 +138,132 @@ def main():
         # so the query type can be used to select the kind of query to run and the params dict is updated with the query
         # string.
 
-        query_config_file_path = Path(config_files_path, 'full_text_search/config_query.yaml')
+        query_config_file_path = Path(config_files_path, 'full_text_search/adv_config_query.yaml')
 
         # Use StreamingResponse to stream the results because run_cursor output is a generator, so data
         # is not loaded into memory and is sent in chunks.
         # return StreamingResponse(result, media_type="application/json")
-        return StreamingResponse(exporter_api['obj'].run_cursor(query, query_config_path=query_config_file_path,
-                                                                conf_query="ocr"), media_type="application/json")
 
+
+        # streaming_response =  StreamingResponse(exporter_api['obj'].run_cursor(request.query, query_config_path=query_config_file_path,
+        #                                                         conf_query=request.field), media_type="application/json")
+
+                   
+        return StreamingResponse(
+            exporter_api['obj'].run_cursor(
+                request.query,
+                query_config_path=query_config_file_path,
+                conf_query=request.field,
+                file_type=request.file_type.lower()
+            ),
+            media_type="application/json"
+        )
+
+        
+    @app.post("/fulltext/")
+    async def advanced_search(request: AdvancedSearchRequest):
+        """
+        Advanced search using edismax query syntax with proper field and operator handling.
+        """                
+        try:
+            logger.info(f"AdvancedSearchRequest {request}")
+            if not request.criteria:
+                return {"error": "No search criteria provided"}      
+            fq_formatted = ""
+            fields=[]            
+            filter_fields = {
+                    "date":{"start_year":request.start_year,"end_year":request.end_year,"in_year":request.in_year},
+                    "language":request.languages,
+                    "format":request.formats,
+                    "location":request.location,
+                    "subject":request.subject,
+                    "author":request.author,
+                    "place_of_pub":request.place_of_pub
+                } 
+            
+            is_all_items = request.item_viewability.lower() == "all items"            
+            
+            # adds rights filter when full view is selected
+            if not is_all_items:
+                filter_fields.update( 
+                    {
+                        "rights":["1","25","9","13","23","18","15","7","21","24","14","11","17","22","12","20","10"],
+                    }
+                )                  
+            
+
+            
+            fields, joined_query = HTSearchQuery.get_criteria_fields_query(request.criteria, request.field_operators, CONFIG_DATA["data"])                
+            logger.info(f"Framed fieds {fields}, joined_query : {joined_query} ")
+                    
+            fq_formatted = build_fq_query(filter_fields, CONFIG_DATA["data"])
+            logger.info(f"fq_formatted : {fq_formatted}")
+
+                    
+            data = exporter_api['obj'].run_cursor(
+                    joined_query,request.field_operators,
+                    query_config_path=FT_QUERY_CONFIG_PATH,
+                    conf_query=fields,fq_formatted=fq_formatted         
+                )     
+            if request.file_type.lower() == "csv":
+                meta = write_csv_and_get_path(data,out_dir="./csv_files")
+                return JSONResponse(meta)
+            return StreamingResponse(data,media_type="application/json")
+        
+        except Exception:
+            logger.error(f"Failed while fetching data : {traceback.print_exc()}")
+            return {"error": "Internal error occured while processing the request"}  
+        
+    @app.post("/catalog/")
+    async def catalog_advanced_search(request: AdvancedSearchRequest):
+        """
+        Catalog search using standard solr query syntax with proper field and operator handling.
+        """                
+        try:
+            logger.info(f"catalog advanced search {request}")
+            if not request.criteria:
+                return {"error": "No search criteria provided"}      
+            fq_formatted = ""
+            fields=[]            
+            is_all_items = request.item_viewability.lower() == "all items"
+            filter_fields = {
+                    "date":{"start_year":request.start_year,"end_year":request.end_year,"in_year":request.in_year},
+                    "language":request.languages,
+                    "format":request.formats,
+                    "location":request.location,
+                    "subject":request.subject,
+                    "author":request.author,
+                    "place_of_pub":request.place_of_pub
+                }             
+            
+            # adds ht_availability filter when full view is selected
+            if not is_all_items:
+                filter_fields.update( 
+                    {
+                        "ht_availability":"Full text",
+                    }
+                )                  
+            
+            search_fields = [(CATALOG_CONFIG_DATA["data"]["field_search_map"].get(cr.field,cr.field),HTSearchQuery.preprocess_search(cr.query,cr.match_type)) for cr in request.criteria]
+            logger.info(f"search_fields : {search_fields}")
+            joined_query = HTSearchQuery.standard_search_components(search_fields,request.field_operators,CATALOG_CONFIG_DATA['data'])                                                                                
+            joined_query['fq'] = build_fq_query(filter_fields, CATALOG_CONFIG_DATA["data"])
+            logger.info(f"Final Query framed {joined_query} ")
+
+                
+            data = catalog_exporter_api['obj'].run_cursor(
+                    joined_query,                    
+                    conf_query=fields,fq_formatted=fq_formatted         
+                )     
+            if request.file_type.lower() == "csv":
+                meta = write_csv_and_get_path(data,out_dir="./csv_files")
+                return JSONResponse(meta)
+            return StreamingResponse(data,media_type="application/json")
+        except Exception:
+            logger.error(f"Failed while fetching data : {traceback.print_exc()}")
+            return {"error": "Internal error occured while processing the request"}  
+
+            
     @app.post("/search_results/")
     def solr_search_results():
         """
@@ -90,3 +278,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

@@ -2,7 +2,11 @@ import yaml
 
 from functools import reduce
 from typing import Text, List, Dict
+from ht_full_text_search.utils.helpers import build_joined_query
+from ht_full_text_search.utils.ht_logger import get_ht_logger
+import json,re
 
+logger = get_ht_logger(name=__name__)
 
 class HTSearchQuery:
     def __init__(
@@ -111,6 +115,94 @@ class HTSearchQuery:
     @staticmethod
     def get_exact_phrase_query(q_string: Text) -> Text:
         return '"'.join(("", q_string, ""))
+    
+    @staticmethod
+    def build_and_or_onephrase(lookfor=None):
+        """
+        Returns the dict of "and", "or", "compressed", "exactmatcher" variations of given search string value
+        """
+        values = {}
+
+        if lookfor is None:
+            return False
+
+        # Remove illegal characters
+        illegal = ['.', '{', '}', '/', '!', ':', ';', '[', ']', '(', ')', '+ ', '&', '- ']
+        for ch in illegal:
+            lookfor = lookfor.replace(ch, '')
+
+        lookfor = lookfor.strip()
+
+        # Replace fancy quotes with normal "
+        lookfor = lookfor.replace('“', '"').replace('”', '"')
+
+        # If it looks like "..."*, pull out the quotes
+        match = re.match(r'^\s*"(.*)"\*\s*$', lookfor)
+        if match:
+            em = match.group(1)
+            lookfor = em + "*"            
+        
+        lookfor = HTSearchQuery.validateInput(lookfor)
+
+        if not re.search(r'\S', lookfor):  # If no non-space char
+            return False
+
+        # Tokenize Input
+        tokenized = HTSearchQuery.tokenize_input(lookfor)
+
+        values['onephrase'] = '"' + " ".join(tokenized).replace('"', '') + '"'
+        values['and'] = " AND ".join(tokenized)
+        values['or'] = " OR ".join(tokenized)
+        values['asis'] = lookfor
+        values['compressed'] = re.sub(r'\s+', '', lookfor)
+        values['exactmatcher'] = HTSearchQuery.exactmatcherify(lookfor)
+        values['emstartswith'] = values['exactmatcher'] + "*"
+        logger.info(f"build_and_or_onephrase values : {values}")
+        return values
+
+    @staticmethod
+    def validateInput(text):        
+        return text.strip()
+
+    @staticmethod
+    def tokenize_input(text: str):
+        import html
+        if text is None:
+            return []
+
+        # 1) Unescape HTML entities (e.g., &quot;)
+        text = html.unescape(text)
+
+        # 2) Normalize smart quotes to straight quotes (keeps phrases intact downstream)
+        text = text.replace('“', '"').replace('”', '"')
+
+        # 3) Find tokens: quoted phrases are a single token
+        TOKEN_RX = re.compile(r'"[^"]*"(?:~\d+)?|“[^”]*”(?:~\d+)?|"(?:[^"]*)"|“[^”]*”|\S+')
+        words = re.findall(TOKEN_RX, text)
+
+        # 4) Glue boolean operators to the previous token (match your PHP loop)
+        new_words = []
+        i = 0
+        while i < len(words):
+            w = words[i]
+            if w in ("OR", "AND", "NOT"):
+                if new_words and i + 1 < len(words):
+                    new_words[-1] += f" {w} {words[i+1]}"
+                    i += 2
+                    continue
+            else:
+                new_words.append(w)
+            i += 1
+
+        # 5) Return non-empty tokens
+        return [w for w in new_words if re.search(r"\S", w)]
+
+    @staticmethod
+    def exactmatcherify(s: str) -> str:        
+        s = s.lower()        
+        s = s.strip()        
+        s = re.sub(r"[^\w\*\?]", "", s, flags=re.UNICODE)
+        return s
 
     @staticmethod
     def manage_string_query(input_phrase: Text, operator: Text = None) -> Dict:
@@ -134,7 +226,146 @@ class HTSearchQuery:
             return query_string_dict
 
     @staticmethod
-    def manage_string_query_solr6(input_phrase: Text, operator: Text = None) -> str| None:
+    def get_criteria_fields_query(criterias, field_operators, config_data):
+        # Process each criterion and collect all results
+        logger.info(f"get_criteria_fields_query - params : {criterias},{field_operators},{config_data}")
+        query_fields = []
+        fields = []        
+        field_search_map = config_data["field_search_map"]
+
+        for criteria in criterias:
+            field = field_search_map.get(criteria.field, criteria.field)
+            fields.append(field)
+            
+            # Map match_type to operator
+            operator = None  # Default for exact phrase
+            if criteria.match_type == "all of these words":
+                operator = "AND"
+            elif criteria.match_type == "any of these words":
+                operator = "OR"
+
+            # Get the formatted query using HTSearchQuery            
+            formatted_query = HTSearchQuery.manage_string_query_solr6(criteria.query, operator, None)
+            query_fields.append(formatted_query)
+            # Get results for this criterion
+
+        # joined_query = build_joined_query(query_fields, field_operators)
+        # logger.info(f"build_joined_query - output : {joined_query}")
+
+        # query_fields = " OR ".join(query_fields)
+        return fields, query_fields
+
+    
+    @staticmethod
+    def preprocess_search(text, type): 
+        if type == "this exact phrase":
+            return f'"{text}"'
+        elif type == "any of these words":
+            words = text.split()
+            if len(words) < 2:
+                return text  # No change needed if only one word
+            return f"{words[0]} OR {' '.join(words[1:])}"
+        return text # returns search text from user for ALL of these words case
+
+    @staticmethod
+    def standard_search_components(search, field_operators, config_data):       
+        """
+        Frames the Solr param "q" using field operators and catalog facet configuration with input search fields
+        """ 
+        searchComponents = {}
+        queries_lst=[]     
+
+        query = ""
+
+        # Iterating over search config fields        
+        for tvb in search:                       
+            type_ = tvb[0]            
+
+            values = HTSearchQuery.build_and_or_onephrase(tvb[1])                        
+
+            if type_ in config_data and values:
+                comp = "(" + HTSearchQuery.build_query_string(config_data[type_], values) + ")"
+                queries_lst.append(comp)                                        
+
+        joined_query = build_joined_query(queries_lst,field_operators)
+
+        if re.search(r"\S", joined_query): 
+            searchComponents["q"] = joined_query
+        else:
+            searchComponents["q"] = "*:*"            
+
+        return searchComponents
+
+    def build_query_string(structure, values, joiner="OR"):
+        """
+        Recursive function that generates solr query along with search boost weights 
+        """
+        clauses = []
+
+        for field, clausearray in structure.items():
+            
+            if isinstance(field, int) or str(field).isdigit():
+                # First item gives operator + weight
+                opweight = clausearray.pop(0)
+                op = opweight[0]
+                weight = opweight[1]
+
+                sstring = "(" + HTSearchQuery.build_query_string({i: v for i, v in enumerate(clausearray)}, values, op) + ")"
+
+                if weight and weight > 0:
+                    sstring += f"^{weight}"
+
+                clauses.append(sstring)
+                continue
+
+            # Case 2: Normal field: clausearray is list of [val, weight]
+            for valweight in clausearray:
+                val = valweight[0]
+                weight = valweight[1]
+
+                # Ensure value exists
+                if val not in values:
+                    if val == "lcnormalized":                        
+                        normalized = HTSearchQuery.LCCallNumberNormalizer(values.get("asis", ""), False)
+                        if normalized:
+                            values[val] = normalized
+                        else:
+                            continue
+
+                    if val == "stdnum":
+                        match = re.match(r'^\s*0*([\d\-\.]+[xX]?).*$', values.get("asis", ""))
+                        if match:
+                            stdnum = match.group(1)
+                            # stdnum = re.sub(r'[\.\-]', '', stdnum)  # original code commented
+                            stdnum = HTSearchQuery.Normalize_stdnum(stdnum)
+                            values[val] = stdnum
+
+                if val not in values or values[val] == "":
+                    continue
+
+                # Build field clause
+                sstring = f"{field}:({values[val]})"
+                if weight and weight > 0:
+                    sstring += f"^{weight}"
+
+                clauses.append(sstring)
+
+        newq = f" {joiner} ".join(clauses)
+        return newq
+   
+
+    @staticmethod
+    def LCCallNumberNormalizer(text, strict=False):
+        return text.strip() if text else None
+
+    @staticmethod
+    def Normalize_stdnum(stdnum):
+        # TODO: implement actual stdnum normalization logic
+        # For now, strip spaces, uppercase X
+        return stdnum.replace(" ", "").upper()
+
+    @staticmethod
+    def manage_string_query_solr6(input_phrase: Text, operator: Text = None, field:str=None) -> str| None:
         """
         This function transform a query_string in Solr string format
 
@@ -145,13 +376,22 @@ class HTSearchQuery:
         :param operator: It could be, all, exact_match or boolean_opperator
         :return:
         """
-
+        logger.info(f"manage_string_query_solr6 - params : {input_phrase},{operator},{field}")
+       
         # query_string_dict = {"q": HTSearchQuery.get_exact_phrase_query(input_phrase)}
-        if operator == "OR" or operator == "AND":
+        formatted_query = ""
+        if operator == "OR":
             # " AND ".join(input_phrase.split())
-            return f" {operator} ".join(input_phrase.split())  # input_phrase
+            formatted_query = f" {operator} ".join(input_phrase.split())        
+        elif operator == "AND":
+            formatted_query = input_phrase
         elif operator is None:
-            return "\"" + input_phrase + "\""
+            formatted_query = "\"" + input_phrase + "\""
+
+        if field:
+            return f"({field}:{formatted_query})"
+        return formatted_query
+
 
     def create_params_dict(self, start: int = 0, rows: int = 100) -> Dict:
 
